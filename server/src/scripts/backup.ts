@@ -9,6 +9,11 @@ import { backup, DatabaseSync } from "node:sqlite"
 
 import { config, ROOT_DIR } from "../config"
 
+if (!config.dbPath) {
+  console.error("✖ O banco está no Turso: a cópia de segurança é feita pelo próprio Turso, no painel dele.")
+  process.exit(1)
+}
+
 const folder = resolve(process.argv[2] ?? join(ROOT_DIR, "backups"))
 mkdirSync(folder, { recursive: true })
 

@@ -18,9 +18,7 @@ let dummyHash: Promise<string> | undefined
 const getDummyHash = () => (dummyHash ??= hashPassword(randomBytes(16).toString("hex")))
 
 export async function verifyCredentials(db: Db, email: string, password: string): Promise<UserRow | null> {
-  const row = db
-    .prepare("SELECT * FROM users WHERE email = ? AND is_active = 1")
-    .get(email) as UserRow | undefined
+  const row = await db.get<UserRow>("SELECT * FROM users WHERE email = ? AND is_active = 1", email)
   const valid = await compare(password, row?.password_hash ?? (await getDummyHash()))
   return row && valid ? row : null
 }
@@ -28,10 +26,11 @@ export async function verifyCredentials(db: Db, email: string, password: string)
 // O token vai só no cookie; no banco fica apenas o hash dele.
 export const hashToken = (token: string) => createHash("sha256").update(token).digest("hex")
 
-export function createSession(db: Db, userId: number): string {
+export async function createSession(db: Db, userId: number): Promise<string> {
   const token = randomBytes(32).toString("base64url")
   const now = Date.now()
-  db.prepare("INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)").run(
+  await db.run(
+    "INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
     hashToken(token),
     userId,
     new Date(now).toISOString(),
@@ -40,19 +39,20 @@ export function createSession(db: Db, userId: number): string {
   return token
 }
 
-export function getSessionUser(db: Db, token: string): UserDTO | null {
-  const session = db
-    .prepare("SELECT user_id, expires_at FROM sessions WHERE token_hash = ?")
-    .get(hashToken(token)) as { user_id: number; expires_at: string } | undefined
+export async function getSessionUser(db: Db, token: string): Promise<UserDTO | null> {
+  const session = await db.get<{ user_id: number; expires_at: string }>(
+    "SELECT user_id, expires_at FROM sessions WHERE token_hash = ?",
+    hashToken(token)
+  )
   if (!session) return null
 
   if (session.expires_at <= new Date().toISOString()) {
-    deleteSession(db, token)
+    await deleteSession(db, token)
     return null
   }
   return findUserById(db, session.user_id)
 }
 
-export function deleteSession(db: Db, token: string) {
-  db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(hashToken(token))
+export async function deleteSession(db: Db, token: string) {
+  await db.run("DELETE FROM sessions WHERE token_hash = ?", hashToken(token))
 }

@@ -11,7 +11,7 @@ import { config } from "../config"
 import { getCategoryId, getTemplate } from "../services/categories"
 import { recordEvent } from "../services/tasks"
 import { insertUser } from "../services/users"
-import { openDatabase, transaction, type Db } from "./connection"
+import { openDatabase, type Db } from "./connection"
 import { DEV_SEED_PASSWORD, SEED_TASKS, SEED_USERS, type SeedTask, type SeedUserKey } from "./seed-data"
 
 const DAY = 24 * 60 * 60 * 1000
@@ -67,9 +67,10 @@ const DEFAULT_CATEGORIES = [
 async function seed(db: Db, reset: boolean) {
   const demoEmails = Object.values(SEED_USERS).map((u) => u.email)
   const placeholders = demoEmails.map(() => "?").join(", ")
-  const { n } = db.prepare(`SELECT COUNT(*) AS n FROM users WHERE email IN (${placeholders})`).get(...demoEmails) as {
-    n: number
-  }
+  const { n } = (await db.get<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM users WHERE email IN (${placeholders})`,
+    ...demoEmails
+  ))!
   if (n > 0 && !reset) {
     console.log("Os dados de exemplo já existem. Para apagar e recriar, use: npm run db:reset")
     return
@@ -77,33 +78,32 @@ async function seed(db: Db, reset: boolean) {
 
   const passwordHash = await hashPassword(DEV_SEED_PASSWORD)
 
-  transaction(db, () => {
+  await db.transaction(async (tx) => {
     if (reset) {
-      db.exec("DELETE FROM task_comments; DELETE FROM task_events; DELETE FROM checklist_items; DELETE FROM tasks;")
-      db.prepare(`DELETE FROM users WHERE email IN (${placeholders})`).run(...demoEmails)
+      await tx.exec("DELETE FROM task_comments; DELETE FROM task_events; DELETE FROM checklist_items; DELETE FROM tasks;")
+      await tx.run(
+        `DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE email IN (${placeholders}))`,
+        ...demoEmails
+      )
+      await tx.run(`DELETE FROM users WHERE email IN (${placeholders})`, ...demoEmails)
     }
 
     // As tarefas de exemplo usam as categorias originais: recria as que faltarem.
-    const insertCategory = db.prepare(
-      "INSERT INTO categories (key, name, icon, position, is_active) VALUES (?, ?, ?, ?, 1) ON CONFLICT (key) DO UPDATE SET is_active = 1"
-    )
-    DEFAULT_CATEGORIES.forEach((c, i) => insertCategory.run(c.key, c.name, c.icon, i + 1))
+    for (const [i, c] of DEFAULT_CATEGORIES.entries()) {
+      await tx.run(
+        "INSERT INTO categories (key, name, icon, position, is_active) VALUES (?, ?, ?, ?, 1) ON CONFLICT (key) DO UPDATE SET is_active = 1",
+        c.key,
+        c.name,
+        c.icon,
+        i + 1
+      )
+    }
 
     const userIds = {} as Record<SeedUserKey, number>
     for (const [key, user] of Object.entries(SEED_USERS) as [SeedUserKey, (typeof SEED_USERS)[SeedUserKey]][]) {
-      userIds[key] = insertUser(db, { ...user, passwordHash })
+      userIds[key] = await insertUser(tx, { ...user, passwordHash })
     }
 
-    const insertTask = db.prepare(
-      `INSERT INTO tasks (title, description, status, position, priority, due_date, category_id, assignee_id,
-                          created_by, blocked_reason, blocked_from_status, last_return_reason,
-                          created_at, updated_at, completed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    const insertItem = db.prepare(
-      `INSERT INTO checklist_items (task_id, label, is_done, is_from_template, done_by, done_at, position)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    )
     const positionInColumn = new Map<TaskStatus, number>()
 
     for (const task of SEED_TASKS) {
@@ -117,8 +117,12 @@ async function seed(db: Db, reset: boolean) {
       const position = (positionInColumn.get(task.status) ?? 0) + 1024
       positionInColumn.set(task.status, position)
 
-      const categoryId = getCategoryId(db, task.category)
-      const result = insertTask.run(
+      const categoryId = await getCategoryId(tx, task.category)
+      const result = await tx.run(
+        `INSERT INTO tasks (title, description, status, position, priority, due_date, category_id, assignee_id,
+                            created_by, blocked_reason, blocked_from_status, last_return_reason,
+                            created_at, updated_at, completed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         task.title,
         task.description,
         task.status,
@@ -135,20 +139,30 @@ async function seed(db: Db, reset: boolean) {
         lastAt,
         task.status === "done" ? lastAt : null
       )
-      const taskId = Number(result.lastInsertRowid)
+      const taskId = result.lastInsertRowid
 
-      const labels = [...getTemplate(db, categoryId), ...(task.extraItems ?? [])]
+      const labels = [...(await getTemplate(tx, categoryId)), ...(task.extraItems ?? [])]
       const allChecked = task.status === "review" || task.status === "done"
       const checked = allChecked ? labels.length : Math.min(task.checked ?? 0, labels.length)
       const doer = userIds[task.assignee ?? task.createdBy]
-      labels.forEach((label, k) => {
+      for (const [k, label] of labels.entries()) {
         const isDone = k < checked
         const isFromTemplate = k < labels.length - (task.extraItems?.length ?? 0)
-        insertItem.run(taskId, label, isDone ? 1 : 0, isFromTemplate ? 1 : 0, isDone ? doer : null, isDone ? lastAt : null, k + 1)
-      })
+        await tx.run(
+          `INSERT INTO checklist_items (task_id, label, is_done, is_from_template, done_by, done_at, position)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          taskId,
+          label,
+          isDone ? 1 : 0,
+          isFromTemplate ? 1 : 0,
+          isDone ? doer : null,
+          isDone ? lastAt : null,
+          k + 1
+        )
+      }
 
-      steps.forEach((step, k) =>
-        recordEvent(db, {
+      for (const [k, step] of steps.entries()) {
+        await recordEvent(tx, {
           taskId,
           actorId: userIds[step.actor],
           type: step.type,
@@ -158,7 +172,7 @@ async function seed(db: Db, reset: boolean) {
           detail: step.type === "created" ? { assigneeId: task.assignee ? userIds[task.assignee] : null } : null,
           at: stamp(k),
         })
-      )
+      }
     }
   })
 
@@ -167,6 +181,6 @@ async function seed(db: Db, reset: boolean) {
   console.log("A senha de todos está em server/.env.example (SEED_PASSWORD).")
 }
 
-const db = openDatabase(config.dbPath)
+const db = await openDatabase(config.db)
 await seed(db, process.argv.includes("--reset"))
 db.close()

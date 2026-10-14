@@ -22,8 +22,8 @@ export function adminRoutes(db: Db) {
   router.use(requireAdmin)
 
   /* Usuários */
-  router.get("/users", (_req, res) => {
-    res.json({ users: listAllUsers(db) })
+  router.get("/users", async (_req, res) => {
+    res.json({ users: await listAllUsers(db) })
   })
 
   router.post("/users", async (req, res) => {
@@ -31,8 +31,8 @@ export function adminRoutes(db: Db) {
     res.status(201).json(result)
   })
 
-  router.patch("/users/:id", (req, res) => {
-    const user = updateUserAsAdmin(db, currentUser(res).id, parseId(req.params.id), parseBody(updateUserSchema, req.body))
+  router.patch("/users/:id", async (req, res) => {
+    const user = await updateUserAsAdmin(db, currentUser(res).id, parseId(req.params.id), parseBody(updateUserSchema, req.body))
     res.json({ user })
   })
 
@@ -42,31 +42,31 @@ export function adminRoutes(db: Db) {
   })
 
   /* Categorias */
-  router.get("/categories", (_req, res) => {
-    res.json({ categories: listCategories(db, { withCounts: true }) })
+  router.get("/categories", async (_req, res) => {
+    res.json({ categories: await listCategories(db, { withCounts: true }) })
   })
 
-  router.post("/categories", (req, res) => {
-    res.status(201).json({ category: createCategory(db, parseBody(createCategorySchema, req.body)) })
+  router.post("/categories", async (req, res) => {
+    res.status(201).json({ category: await createCategory(db, parseBody(createCategorySchema, req.body)) })
   })
 
-  router.put("/categories/order", (req, res) => {
-    reorderCategories(db, parseBody(reorderCategoriesSchema, req.body).keys)
-    res.json({ categories: listCategories(db, { withCounts: true }) })
+  router.put("/categories/order", async (req, res) => {
+    await reorderCategories(db, parseBody(reorderCategoriesSchema, req.body).keys)
+    res.json({ categories: await listCategories(db, { withCounts: true }) })
   })
 
-  router.patch("/categories/:key", (req, res) => {
-    res.json({ category: updateCategory(db, String(req.params.key), parseBody(updateCategorySchema, req.body)) })
+  router.patch("/categories/:key", async (req, res) => {
+    res.json({ category: await updateCategory(db, String(req.params.key), parseBody(updateCategorySchema, req.body)) })
   })
 
-  router.delete("/categories/:key", (req, res) => {
-    deleteCategory(db, String(req.params.key))
+  router.delete("/categories/:key", async (req, res) => {
+    await deleteCategory(db, String(req.params.key))
     res.status(204).end()
   })
 
   /* Configurações gerais */
-  router.patch("/settings", (req, res) => {
-    res.json({ settings: updateSettings(db, parseBody(settingsSchema, req.body)) })
+  router.patch("/settings", async (req, res) => {
+    res.json({ settings: await updateSettings(db, parseBody(settingsSchema, req.body)) })
   })
 
   return router

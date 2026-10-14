@@ -21,7 +21,7 @@ import {
   type UpdateTaskInput,
 } from "@tarefas/shared"
 
-import { transaction, type Db } from "../db/connection"
+import type { Db, SqlValue } from "../db/connection"
 import { assertRule, HttpError, notFound } from "../http/errors"
 import { getCategoryId, getTemplate } from "./categories"
 import { listComments } from "./comments"
@@ -84,19 +84,18 @@ function toSummary(row: TaskRow): TaskSummaryDTO {
   }
 }
 
-function getTaskRow(db: Db, id: number): TaskRow {
-  const row = db.prepare(`${TASK_SELECT} WHERE t.id = ?`).get(id) as TaskRow | undefined
+async function getTaskRow(db: Db, id: number): Promise<TaskRow> {
+  const row = await db.get<TaskRow>(`${TASK_SELECT} WHERE t.id = ?`, id)
   if (!row) throw notFound("Tarefa não encontrada.")
   return row
 }
 
-export function listTasks(db: Db): TaskSummaryDTO[] {
-  const rows = db.prepare(`${TASK_SELECT} ORDER BY t.status, t.position`).all() as unknown as TaskRow[]
-  return rows.map(toSummary)
+export async function listTasks(db: Db): Promise<TaskSummaryDTO[]> {
+  return (await db.all<TaskRow>(`${TASK_SELECT} ORDER BY t.status, t.position`)).map(toSummary)
 }
 
-export function getTaskSummary(db: Db, id: number): TaskSummaryDTO {
-  return toSummary(getTaskRow(db, id))
+export async function getTaskSummary(db: Db, id: number): Promise<TaskSummaryDTO> {
+  return toSummary(await getTaskRow(db, id))
 }
 
 interface ChecklistRow {
@@ -142,20 +141,19 @@ const toEvent = (r: EventRow): TaskEventDTO => ({
   createdAt: r.created_at,
 })
 
-export function getTaskDetail(db: Db, id: number): TaskDetailDTO {
-  const row = getTaskRow(db, id)
-  const checklist = db
-    .prepare("SELECT * FROM checklist_items WHERE task_id = ? ORDER BY position, id")
-    .all(id) as unknown as ChecklistRow[]
-  const events = db
-    .prepare("SELECT * FROM task_events WHERE task_id = ? ORDER BY created_at, id")
-    .all(id) as unknown as EventRow[]
+export async function getTaskDetail(db: Db, id: number): Promise<TaskDetailDTO> {
+  const row = await getTaskRow(db, id)
+  const [checklist, events, comments] = await Promise.all([
+    db.all<ChecklistRow>("SELECT * FROM checklist_items WHERE task_id = ? ORDER BY position, id", id),
+    db.all<EventRow>("SELECT * FROM task_events WHERE task_id = ? ORDER BY created_at, id", id),
+    listComments(db, id),
+  ])
 
   return {
     ...toSummary(row),
     checklist: checklist.map(toChecklistItem),
     events: events.map(toEvent),
-    comments: listComments(db, id),
+    comments,
   }
 }
 
@@ -163,7 +161,7 @@ export function getTaskDetail(db: Db, id: number): TaskDetailDTO {
 
 const now = () => new Date().toISOString()
 
-export function recordEvent(
+export async function recordEvent(
   db: Db,
   event: {
     taskId: number
@@ -176,10 +174,9 @@ export function recordEvent(
     at?: string
   }
 ) {
-  db.prepare(
+  await db.run(
     `INSERT INTO task_events (task_id, actor_id, type, from_status, to_status, reason, detail, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     event.taskId,
     event.actorId,
     event.type,
@@ -195,10 +192,12 @@ export function recordEvent(
  * Posição fracionária para inserir um card no índice `index` da coluna, sem
  * precisar renumerar os vizinhos. `index` omitido = fim da coluna.
  */
-export function positionFor(db: Db, status: TaskStatus, index: number | undefined, excludeId = 0): number {
-  const rows = db
-    .prepare("SELECT id, position FROM tasks WHERE status = ? AND id != ? ORDER BY position")
-    .all(status, excludeId) as { id: number; position: number }[]
+export async function positionFor(db: Db, status: TaskStatus, index: number | undefined, excludeId = 0): Promise<number> {
+  const rows = await db.all<{ id: number; position: number }>(
+    "SELECT id, position FROM tasks WHERE status = ? AND id != ? ORDER BY position",
+    status,
+    excludeId
+  )
 
   const position = positionBetween(
     rows.map((r) => r.position),
@@ -207,55 +206,55 @@ export function positionFor(db: Db, status: TaskStatus, index: number | undefine
   if (position !== null) return position
 
   // Sem espaço entre os vizinhos: renumera a coluna e tenta de novo.
-  const update = db.prepare("UPDATE tasks SET position = ? WHERE id = ?")
-  rows.forEach((r, k) => update.run((k + 1) * POSITION_STEP, r.id))
+  for (const [k, r] of rows.entries()) await db.run("UPDATE tasks SET position = ? WHERE id = ?", (k + 1) * POSITION_STEP, r.id)
   return positionFor(db, status, index, excludeId)
 }
 
-function ensureAssignable(db: Db, actor: Actor, assigneeId: number | null) {
+async function ensureAssignable(db: Db, actor: Actor, assigneeId: number | null) {
   assertRule(checkAssign(actor, assigneeId))
-  if (assigneeId !== null && !findUserById(db, assigneeId)) {
+  if (assigneeId !== null && !(await findUserById(db, assigneeId))) {
     throw new HttpError(422, "validation_error", "Responsável não encontrado.")
   }
 }
 
-function insertTemplateItems(db: Db, taskId: number, categoryId: number, startPosition = 1) {
-  const insert = db.prepare(
-    "INSERT INTO checklist_items (task_id, label, is_from_template, position) VALUES (?, ?, 1, ?)"
-  )
-  getTemplate(db, categoryId).forEach((label, k) => insert.run(taskId, label, startPosition + k))
+async function insertTemplateItems(db: Db, taskId: number, categoryId: number, startPosition = 1) {
+  for (const [k, label] of (await getTemplate(db, categoryId)).entries()) {
+    await db.run(
+      "INSERT INTO checklist_items (task_id, label, is_from_template, position) VALUES (?, ?, 1, ?)",
+      taskId,
+      label,
+      startPosition + k
+    )
+  }
 }
 
 /* ───────────────────────── escrita ───────────────────────── */
 
-export function createTask(db: Db, actor: Actor, input: CreateTaskInput): TaskDetailDTO {
+export async function createTask(db: Db, actor: Actor, input: CreateTaskInput): Promise<TaskDetailDTO> {
   const assigneeId = input.assigneeId === undefined ? actor.id : input.assigneeId
-  ensureAssignable(db, actor, assigneeId)
+  await ensureAssignable(db, actor, assigneeId)
 
-  const id = transaction(db, () => {
-    const categoryId = getCategoryId(db, input.category, { mustBeActive: true })
+  const id = await db.transaction(async (tx) => {
+    const categoryId = await getCategoryId(tx, input.category, { mustBeActive: true })
     const timestamp = now()
-    const result = db
-      .prepare(
-        `INSERT INTO tasks (title, description, status, position, priority, due_date, category_id,
-                            assignee_id, created_by, created_at, updated_at)
-         VALUES (?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
-        input.title,
-        input.description,
-        positionFor(db, "todo", 0),
-        input.priority,
-        input.dueDate,
-        categoryId,
-        assigneeId,
-        actor.id,
-        timestamp,
-        timestamp
-      )
-    const taskId = Number(result.lastInsertRowid)
-    insertTemplateItems(db, taskId, categoryId)
-    recordEvent(db, { taskId, actorId: actor.id, type: "created", to: "todo", detail: { assigneeId }, at: timestamp })
+    const result = await tx.run(
+      `INSERT INTO tasks (title, description, status, position, priority, due_date, category_id,
+                          assignee_id, created_by, created_at, updated_at)
+       VALUES (?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?, ?)`,
+      input.title,
+      input.description,
+      await positionFor(tx, "todo", 0),
+      input.priority,
+      input.dueDate,
+      categoryId,
+      assigneeId,
+      actor.id,
+      timestamp,
+      timestamp
+    )
+    const taskId = result.lastInsertRowid
+    await insertTemplateItems(tx, taskId, categoryId)
+    await recordEvent(tx, { taskId, actorId: actor.id, type: "created", to: "todo", detail: { assigneeId }, at: timestamp })
     return taskId
   })
 
@@ -269,10 +268,10 @@ const FIELD_COLUMNS = {
   dueDate: "due_date",
 } as const
 
-export function updateTask(db: Db, actor: Actor, id: number, patch: UpdateTaskInput): TaskDetailDTO {
-  const row = getTaskRow(db, id)
+export async function updateTask(db: Db, actor: Actor, id: number, patch: UpdateTaskInput): Promise<TaskDetailDTO> {
+  const row = await getTaskRow(db, id)
 
-  transaction(db, () => {
+  await db.transaction(async (tx) => {
     const timestamp = now()
     const changed: string[] = []
 
@@ -280,27 +279,27 @@ export function updateTask(db: Db, actor: Actor, id: number, patch: UpdateTaskIn
       const value = patch[field]
       const current = field === "dueDate" ? row.due_date : row[field]
       if (value !== undefined && value !== current) {
-        db.prepare(`UPDATE tasks SET ${column} = ? WHERE id = ?`).run(value, id)
+        await tx.run(`UPDATE tasks SET ${column} = ? WHERE id = ?`, value, id)
         changed.push(field)
       }
     }
 
     if (patch.category !== undefined && patch.category !== row.category_key) {
-      assertRule(checkChecklistEditable(row.status, ruleOptions(db)))
+      assertRule(checkChecklistEditable(row.status, await ruleOptions(tx)))
       // Troca os itens do padrão antigo pelos do novo; itens avulsos ficam.
-      const categoryId = getCategoryId(db, patch.category, { mustBeActive: true })
-      db.prepare("DELETE FROM checklist_items WHERE task_id = ? AND is_from_template = 1").run(id)
-      const templateSize = getTemplate(db, categoryId).length
-      db.prepare("UPDATE checklist_items SET position = position + ? WHERE task_id = ?").run(templateSize, id)
-      insertTemplateItems(db, id, categoryId)
-      db.prepare("UPDATE tasks SET category_id = ? WHERE id = ?").run(categoryId, id)
+      const categoryId = await getCategoryId(tx, patch.category, { mustBeActive: true })
+      await tx.run("DELETE FROM checklist_items WHERE task_id = ? AND is_from_template = 1", id)
+      const templateSize = (await getTemplate(tx, categoryId)).length
+      await tx.run("UPDATE checklist_items SET position = position + ? WHERE task_id = ?", templateSize, id)
+      await insertTemplateItems(tx, id, categoryId)
+      await tx.run("UPDATE tasks SET category_id = ? WHERE id = ?", categoryId, id)
       changed.push("category")
     }
 
     if (patch.assigneeId !== undefined && patch.assigneeId !== row.assignee_id) {
-      ensureAssignable(db, actor, patch.assigneeId)
-      db.prepare("UPDATE tasks SET assignee_id = ? WHERE id = ?").run(patch.assigneeId, id)
-      recordEvent(db, {
+      await ensureAssignable(tx, actor, patch.assigneeId)
+      await tx.run("UPDATE tasks SET assignee_id = ? WHERE id = ?", patch.assigneeId, id)
+      await recordEvent(tx, {
         taskId: id,
         actorId: actor.id,
         type: "assigned",
@@ -310,16 +309,16 @@ export function updateTask(db: Db, actor: Actor, id: number, patch: UpdateTaskIn
     }
 
     if (changed.length > 0) {
-      recordEvent(db, { taskId: id, actorId: actor.id, type: "updated", detail: { fields: changed }, at: timestamp })
+      await recordEvent(tx, { taskId: id, actorId: actor.id, type: "updated", detail: { fields: changed }, at: timestamp })
     }
-    db.prepare("UPDATE tasks SET updated_at = ? WHERE id = ?").run(timestamp, id)
+    await tx.run("UPDATE tasks SET updated_at = ? WHERE id = ?", timestamp, id)
   })
 
   return getTaskDetail(db, id)
 }
 
-export function moveTask(db: Db, actor: Actor, id: number, input: MoveTaskInput): TaskSummaryDTO {
-  const row = getTaskRow(db, id)
+export async function moveTask(db: Db, actor: Actor, id: number, input: MoveTaskInput): Promise<TaskSummaryDTO> {
+  const row = await getTaskRow(db, id)
   const reason = input.reason?.trim() || null
 
   const result = checkMove(
@@ -331,15 +330,15 @@ export function moveTask(db: Db, actor: Actor, id: number, input: MoveTaskInput)
       checklistTotal: row.checklist_total,
       reason,
     },
-    ruleOptions(db)
+    await ruleOptions(db)
   )
   assertRule(result)
 
-  transaction(db, () => {
+  await db.transaction(async (tx) => {
     const timestamp = now()
-    const sets: Record<string, unknown> = {
+    const sets: Record<string, SqlValue> = {
       status: input.status,
-      position: positionFor(db, input.status, input.index, id),
+      position: await positionFor(tx, input.status, input.index, id),
     }
 
     switch (result.event) {
@@ -368,13 +367,10 @@ export function moveTask(db: Db, actor: Actor, id: number, input: MoveTaskInput)
     if (result.event) sets.updated_at = timestamp
 
     const columns = Object.keys(sets)
-    db.prepare(`UPDATE tasks SET ${columns.map((c) => `${c} = ?`).join(", ")} WHERE id = ?`).run(
-      ...(Object.values(sets) as (string | number | null)[]),
-      id
-    )
+    await tx.run(`UPDATE tasks SET ${columns.map((c) => `${c} = ?`).join(", ")} WHERE id = ?`, ...Object.values(sets), id)
 
     if (result.event) {
-      recordEvent(db, {
+      await recordEvent(tx, {
         taskId: id,
         actorId: actor.id,
         type: result.event,
@@ -391,72 +387,74 @@ export function moveTask(db: Db, actor: Actor, id: number, input: MoveTaskInput)
 
 /* ───────────────────────── checklist ───────────────────────── */
 
-function getChecklistRow(db: Db, taskId: number, itemId: number): ChecklistRow {
-  const item = db
-    .prepare("SELECT * FROM checklist_items WHERE id = ? AND task_id = ?")
-    .get(itemId, taskId) as ChecklistRow | undefined
+async function getChecklistRow(db: Db, taskId: number, itemId: number): Promise<ChecklistRow> {
+  const item = await db.get<ChecklistRow>("SELECT * FROM checklist_items WHERE id = ? AND task_id = ?", itemId, taskId)
   if (!item) throw notFound("Item do checklist não encontrado.")
   return item
 }
 
-const touchTask = (db: Db, taskId: number) =>
-  db.prepare("UPDATE tasks SET updated_at = ? WHERE id = ?").run(now(), taskId)
+const touchTask = (db: Db, taskId: number) => db.run("UPDATE tasks SET updated_at = ? WHERE id = ?", now(), taskId)
 
-export function addChecklistItem(db: Db, taskId: number, input: CreateChecklistItemInput): ChecklistItemDTO {
-  const task = getTaskRow(db, taskId)
-  assertRule(checkChecklistEditable(task.status, ruleOptions(db)))
+export async function addChecklistItem(db: Db, taskId: number, input: CreateChecklistItemInput): Promise<ChecklistItemDTO> {
+  const task = await getTaskRow(db, taskId)
+  assertRule(checkChecklistEditable(task.status, await ruleOptions(db)))
 
-  const itemId = transaction(db, () => {
-    const { next } = db
-      .prepare("SELECT COALESCE(MAX(position), 0) + 1 AS next FROM checklist_items WHERE task_id = ?")
-      .get(taskId) as { next: number }
-    const result = db
-      .prepare("INSERT INTO checklist_items (task_id, label, is_from_template, position) VALUES (?, ?, 0, ?)")
-      .run(taskId, input.label, next)
-    touchTask(db, taskId)
-    return Number(result.lastInsertRowid)
+  const itemId = await db.transaction(async (tx) => {
+    const { next } = (await tx.get<{ next: number }>(
+      "SELECT COALESCE(MAX(position), 0) + 1 AS next FROM checklist_items WHERE task_id = ?",
+      taskId
+    ))!
+    const result = await tx.run(
+      "INSERT INTO checklist_items (task_id, label, is_from_template, position) VALUES (?, ?, 0, ?)",
+      taskId,
+      input.label,
+      next
+    )
+    await touchTask(tx, taskId)
+    return result.lastInsertRowid
   })
-  return toChecklistItem(getChecklistRow(db, taskId, itemId))
+  return toChecklistItem(await getChecklistRow(db, taskId, itemId))
 }
 
-export function updateChecklistItem(
+export async function updateChecklistItem(
   db: Db,
   actor: Actor,
   taskId: number,
   itemId: number,
   patch: UpdateChecklistItemInput
-): ChecklistItemDTO {
-  const task = getTaskRow(db, taskId)
-  assertRule(checkChecklistEditable(task.status, ruleOptions(db)))
-  const item = getChecklistRow(db, taskId, itemId)
+): Promise<ChecklistItemDTO> {
+  const task = await getTaskRow(db, taskId)
+  assertRule(checkChecklistEditable(task.status, await ruleOptions(db)))
+  const item = await getChecklistRow(db, taskId, itemId)
 
-  transaction(db, () => {
+  await db.transaction(async (tx) => {
     if (patch.label !== undefined && patch.label !== item.label) {
       // Reescrever um item padrão equivale a removê-lo: mesma regra.
       assertRule(checkChecklistItemRemoval(actor.role, item.is_from_template === 1))
-      db.prepare("UPDATE checklist_items SET label = ? WHERE id = ?").run(patch.label, itemId)
+      await tx.run("UPDATE checklist_items SET label = ? WHERE id = ?", patch.label, itemId)
     }
     if (patch.isDone !== undefined && patch.isDone !== (item.is_done === 1)) {
-      db.prepare("UPDATE checklist_items SET is_done = ?, done_by = ?, done_at = ? WHERE id = ?").run(
+      await tx.run(
+        "UPDATE checklist_items SET is_done = ?, done_by = ?, done_at = ? WHERE id = ?",
         patch.isDone ? 1 : 0,
         patch.isDone ? actor.id : null,
         patch.isDone ? now() : null,
         itemId
       )
     }
-    touchTask(db, taskId)
+    await touchTask(tx, taskId)
   })
-  return toChecklistItem(getChecklistRow(db, taskId, itemId))
+  return toChecklistItem(await getChecklistRow(db, taskId, itemId))
 }
 
-export function removeChecklistItem(db: Db, actor: Actor, taskId: number, itemId: number) {
-  const task = getTaskRow(db, taskId)
-  assertRule(checkChecklistEditable(task.status, ruleOptions(db)))
-  const item = getChecklistRow(db, taskId, itemId)
+export async function removeChecklistItem(db: Db, actor: Actor, taskId: number, itemId: number) {
+  const task = await getTaskRow(db, taskId)
+  assertRule(checkChecklistEditable(task.status, await ruleOptions(db)))
+  const item = await getChecklistRow(db, taskId, itemId)
   assertRule(checkChecklistItemRemoval(actor.role, item.is_from_template === 1))
 
-  transaction(db, () => {
-    db.prepare("DELETE FROM checklist_items WHERE id = ?").run(itemId)
-    touchTask(db, taskId)
+  await db.transaction(async (tx) => {
+    await tx.run("DELETE FROM checklist_items WHERE id = ?", itemId)
+    await touchTask(tx, taskId)
   })
 }

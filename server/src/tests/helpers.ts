@@ -3,7 +3,7 @@ import type { UserRole } from "@tarefas/shared"
 
 import { createApp } from "../app"
 import { hashPassword } from "../auth/sessions"
-import { openDatabase } from "../db/connection"
+import { localTarget, openDatabase } from "../db/connection"
 import { insertUser } from "../services/users"
 
 export const TEST_PASSWORD = "senha-de-teste"
@@ -20,7 +20,7 @@ export interface ApiClient {
 
 /** Sobe a API com banco em memória: dois gestores e dois executores. */
 export async function startTestServer() {
-  const db = openDatabase(":memory:")
+  const db = await openDatabase(localTarget(":memory:"))
   const passwordHash = await hashPassword(TEST_PASSWORD)
   const users: Record<string, { id: number; email: string; role: UserRole }> = {}
   for (const [key, role] of [
@@ -33,7 +33,7 @@ export async function startTestServer() {
     const email = `${key}@teste.local`
     // O gerente de teste também é administrador.
     const isAdmin = key === "gerente"
-    users[key] = { id: insertUser(db, { name: key, email, passwordHash, role, isAdmin, avatarColor: "violet" }), email, role }
+    users[key] = { id: await insertUser(db, { name: key, email, passwordHash, role, isAdmin, avatarColor: "violet" }), email, role }
   }
 
   const server = createApp({ db }).listen(0)

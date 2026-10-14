@@ -7,9 +7,9 @@ import { getSessionUser, SESSION_COOKIE } from "./sessions"
 
 /** Exige sessão válida e deixa o usuário em `res.locals.user`. */
 export function requireAuth(db: Db): RequestHandler {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     const token = req.cookies?.[SESSION_COOKIE]
-    const user = typeof token === "string" ? getSessionUser(db, token) : null
+    const user = typeof token === "string" ? await getSessionUser(db, token) : null
     if (!user) return next(new HttpError(401, "unauthenticated", "Sua sessão expirou. Entre novamente."))
     res.locals.user = user
     next()

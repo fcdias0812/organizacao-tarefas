@@ -20,42 +20,43 @@ const toDTO = (r: CommentRow): CommentDTO => ({
   updatedAt: r.updated_at,
 })
 
-export function listComments(db: Db, taskId: number): CommentDTO[] {
-  return (
-    db.prepare("SELECT * FROM task_comments WHERE task_id = ? ORDER BY created_at, id").all(taskId) as unknown as CommentRow[]
-  ).map(toDTO)
+export async function listComments(db: Db, taskId: number): Promise<CommentDTO[]> {
+  return (await db.all<CommentRow>("SELECT * FROM task_comments WHERE task_id = ? ORDER BY created_at, id", taskId)).map(toDTO)
 }
 
-function getRow(db: Db, taskId: number, id: number): CommentRow {
-  const row = db.prepare("SELECT * FROM task_comments WHERE id = ? AND task_id = ?").get(id, taskId) as
-    | CommentRow
-    | undefined
+async function getRow(db: Db, taskId: number, id: number): Promise<CommentRow> {
+  const row = await db.get<CommentRow>("SELECT * FROM task_comments WHERE id = ? AND task_id = ?", id, taskId)
   if (!row) throw notFound("Comentário não encontrado.")
   return row
 }
 
-export function addComment(db: Db, actor: UserDTO, taskId: number, body: string): CommentDTO {
-  if (!db.prepare("SELECT 1 FROM tasks WHERE id = ?").get(taskId)) throw notFound("Tarefa não encontrada.")
+export async function addComment(db: Db, actor: UserDTO, taskId: number, body: string): Promise<CommentDTO> {
+  if (!(await db.get("SELECT 1 FROM tasks WHERE id = ?", taskId))) throw notFound("Tarefa não encontrada.")
   const now = new Date().toISOString()
-  const result = db
-    .prepare("INSERT INTO task_comments (task_id, author_id, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
-    .run(taskId, actor.id, body, now, now)
-  return toDTO(getRow(db, taskId, Number(result.lastInsertRowid)))
+  const result = await db.run(
+    "INSERT INTO task_comments (task_id, author_id, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+    taskId,
+    actor.id,
+    body,
+    now,
+    now
+  )
+  return toDTO(await getRow(db, taskId, result.lastInsertRowid))
 }
 
 /** Só quem escreveu edita o próprio comentário. */
-export function updateComment(db: Db, actor: UserDTO, taskId: number, id: number, body: string): CommentDTO {
-  const row = getRow(db, taskId, id)
+export async function updateComment(db: Db, actor: UserDTO, taskId: number, id: number, body: string): Promise<CommentDTO> {
+  const row = await getRow(db, taskId, id)
   if (row.author_id !== actor.id) throw new HttpError(403, "forbidden", "Só quem escreveu pode editar o comentário.")
-  db.prepare("UPDATE task_comments SET body = ?, updated_at = ? WHERE id = ?").run(body, new Date().toISOString(), id)
-  return toDTO(getRow(db, taskId, id))
+  await db.run("UPDATE task_comments SET body = ?, updated_at = ? WHERE id = ?", body, new Date().toISOString(), id)
+  return toDTO(await getRow(db, taskId, id))
 }
 
 /** Quem escreveu ou um administrador pode excluir. */
-export function deleteComment(db: Db, actor: UserDTO, taskId: number, id: number) {
-  const row = getRow(db, taskId, id)
+export async function deleteComment(db: Db, actor: UserDTO, taskId: number, id: number) {
+  const row = await getRow(db, taskId, id)
   if (row.author_id !== actor.id && !actor.isAdmin) {
     throw new HttpError(403, "forbidden", "Só quem escreveu (ou um administrador) pode excluir o comentário.")
   }
-  db.prepare("DELETE FROM task_comments WHERE id = ?").run(id)
+  await db.run("DELETE FROM task_comments WHERE id = ?", id)
 }

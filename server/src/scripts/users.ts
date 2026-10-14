@@ -17,7 +17,7 @@ import { parseArgs } from "node:util"
 import { AVATAR_COLORS, type UserRole } from "@tarefas/shared"
 
 import { hashPassword } from "../auth/sessions"
-import { config } from "../config"
+import { config, dbLabel } from "../config"
 import { openDatabase } from "../db/connection"
 import { generatePassword, insertUser, type UserRow } from "../services/users"
 
@@ -54,14 +54,15 @@ const { positionals, values } = parseArgs({
 })
 
 const command = positionals[0]
-const db = openDatabase(config.dbPath)
+const db = await openDatabase(config.db)
+// Deixa claro se o comando mexe no banco local ou no Turso.
+console.log(`Banco: ${dbLabel}\n`)
 const email = values.email?.trim().toLowerCase()
-const findByEmail = () =>
-  db.prepare("SELECT * FROM users WHERE email = ?").get(email ?? "") as UserRow | undefined
+const findByEmail = () => db.get<UserRow>("SELECT * FROM users WHERE email = ?", email ?? "")
 
 switch (command) {
   case "listar": {
-    const users = db.prepare("SELECT * FROM users ORDER BY is_active DESC, name").all() as unknown as UserRow[]
+    const users = await db.all<UserRow>("SELECT * FROM users ORDER BY is_active DESC, name")
     if (users.length === 0) console.log("Nenhum usuário cadastrado.")
     for (const u of users) {
       console.log(
@@ -77,11 +78,11 @@ switch (command) {
     if (!name || !email || !profile) {
       fail('Uso: npm run usuarios -- criar --nome "Nome Sobrenome" --email pessoa@empresa --perfil admin|gestor|executor [--cargo "Cargo"]')
     }
-    if (findByEmail()) fail(`Já existe um usuário com o e-mail ${email}.`)
+    if (await findByEmail()) fail(`Já existe um usuário com o e-mail ${email}.`)
 
-    const { n } = db.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number }
+    const { n } = (await db.get<{ n: number }>("SELECT COUNT(*) AS n FROM users"))!
     const { password, generated } = chosenPassword()
-    insertUser(db, {
+    await insertUser(db, {
       name,
       email,
       ...profile,
@@ -100,10 +101,10 @@ switch (command) {
   }
 
   case "senha": {
-    const user = findByEmail() ?? fail(`Usuário ${email ?? "(sem e-mail)"} não encontrado.`)
+    const user = (await findByEmail()) ?? fail(`Usuário ${email ?? "(sem e-mail)"} não encontrado.`)
     const { password, generated } = chosenPassword()
-    db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(await hashPassword(password), user.id)
-    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(user.id)
+    await db.run("UPDATE users SET password_hash = ? WHERE id = ?", await hashPassword(password), user.id)
+    await db.run("DELETE FROM sessions WHERE user_id = ?", user.id)
     console.log(generated ? `✔ Nova senha de ${user.name}: ${password}` : `✔ Senha de ${user.name} atualizada.`)
     console.log("  As sessões abertas dessa pessoa foram encerradas.")
     break
@@ -111,10 +112,10 @@ switch (command) {
 
   case "desativar":
   case "ativar": {
-    const user = findByEmail() ?? fail(`Usuário ${email ?? "(sem e-mail)"} não encontrado.`)
+    const user = (await findByEmail()) ?? fail(`Usuário ${email ?? "(sem e-mail)"} não encontrado.`)
     const active = command === "ativar"
-    db.prepare("UPDATE users SET is_active = ? WHERE id = ?").run(active ? 1 : 0, user.id)
-    if (!active) db.prepare("DELETE FROM sessions WHERE user_id = ?").run(user.id)
+    await db.run("UPDATE users SET is_active = ? WHERE id = ?", active ? 1 : 0, user.id)
+    if (!active) await db.run("DELETE FROM sessions WHERE user_id = ?", user.id)
     console.log(`✔ ${user.name} ${active ? "reativado(a)" : "desativado(a)"}.`)
     break
   }

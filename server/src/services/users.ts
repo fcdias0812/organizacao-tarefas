@@ -9,7 +9,7 @@ import {
   type UserRole,
 } from "@tarefas/shared"
 
-import { transaction, type Db } from "../db/connection"
+import type { Db } from "../db/connection"
 import { HttpError, notFound } from "../http/errors"
 
 export interface UserRow {
@@ -43,17 +43,16 @@ const toAdminDTO = (row: UserRow): AdminUserDTO => ({
   createdAt: row.created_at,
 })
 
-export function findUserById(db: Db, id: number): UserDTO | null {
-  const row = db.prepare("SELECT * FROM users WHERE id = ? AND is_active = 1").get(id) as UserRow | undefined
+export async function findUserById(db: Db, id: number): Promise<UserDTO | null> {
+  const row = await db.get<UserRow>("SELECT * FROM users WHERE id = ? AND is_active = 1", id)
   return row ? toUserDTO(row) : null
 }
 
-export function listUsers(db: Db): UserDTO[] {
-  const rows = db.prepare("SELECT * FROM users WHERE is_active = 1 ORDER BY name").all() as unknown as UserRow[]
-  return rows.map(toUserDTO)
+export async function listUsers(db: Db): Promise<UserDTO[]> {
+  return (await db.all<UserRow>("SELECT * FROM users WHERE is_active = 1 ORDER BY name")).map(toUserDTO)
 }
 
-export function insertUser(
+export async function insertUser(
   db: Db,
   user: {
     name: string
@@ -64,23 +63,20 @@ export function insertUser(
     jobTitle?: string | null
     avatarColor: AvatarColor
   }
-): number {
-  const result = db
-    .prepare(
-      `INSERT INTO users (name, email, password_hash, role, is_admin, job_title, avatar_color, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(
-      user.name,
-      user.email.toLowerCase(),
-      user.passwordHash,
-      user.role,
-      user.isAdmin && user.role === "manager" ? 1 : 0,
-      user.jobTitle ?? null,
-      user.avatarColor,
-      new Date().toISOString()
-    )
-  return Number(result.lastInsertRowid)
+): Promise<number> {
+  const result = await db.run(
+    `INSERT INTO users (name, email, password_hash, role, is_admin, job_title, avatar_color, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    user.name,
+    user.email.toLowerCase(),
+    user.passwordHash,
+    user.role,
+    user.isAdmin && user.role === "manager" ? 1 : 0,
+    user.jobTitle ?? null,
+    user.avatarColor,
+    new Date().toISOString()
+  )
+  return result.lastInsertRowid
 }
 
 /** Senha temporária legível (sem caracteres que se confundem, como 0/O e 1/l). */
@@ -91,44 +87,42 @@ export function generatePassword(length = 12) {
 
 /* ───────────────────────── administração ───────────────────────── */
 
-function getRow(db: Db, id: number): UserRow {
-  const row = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | undefined
+async function getRow(db: Db, id: number): Promise<UserRow> {
+  const row = await db.get<UserRow>("SELECT * FROM users WHERE id = ?", id)
   if (!row) throw notFound("Usuário não encontrado.")
   return row
 }
 
-function ensureEmailFree(db: Db, email: string, exceptId = 0) {
-  if (db.prepare("SELECT 1 FROM users WHERE email = ? AND id != ?").get(email.toLowerCase(), exceptId)) {
+async function ensureEmailFree(db: Db, email: string, exceptId = 0) {
+  if (await db.get("SELECT 1 FROM users WHERE email = ? AND id != ?", email.toLowerCase(), exceptId)) {
     throw new HttpError(409, "conflict", "Já existe um usuário com este e-mail.")
   }
 }
 
-export function listAllUsers(db: Db): AdminUserDTO[] {
-  const rows = db.prepare("SELECT * FROM users ORDER BY is_active DESC, name").all() as unknown as UserRow[]
-  return rows.map(toAdminDTO)
+export async function listAllUsers(db: Db): Promise<AdminUserDTO[]> {
+  return (await db.all<UserRow>("SELECT * FROM users ORDER BY is_active DESC, name")).map(toAdminDTO)
 }
 
-export function createUserAsAdmin(
+export async function createUserAsAdmin(
   db: Db,
   input: CreateUserInput,
   hash: (password: string) => Promise<string>
 ): Promise<{ user: AdminUserDTO; temporaryPassword: string }> {
-  ensureEmailFree(db, input.email)
+  await ensureEmailFree(db, input.email)
   const temporaryPassword = generatePassword()
-  return hash(temporaryPassword).then((passwordHash) => {
-    const { n } = db.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number }
-    const id = insertUser(db, {
-      ...input,
-      passwordHash,
-      avatarColor: input.avatarColor ?? AVATAR_COLORS[n % AVATAR_COLORS.length],
-    })
-    return { user: toAdminDTO(getRow(db, id)), temporaryPassword }
+  const passwordHash = await hash(temporaryPassword)
+  const { n } = (await db.get<{ n: number }>("SELECT COUNT(*) AS n FROM users"))!
+  const id = await insertUser(db, {
+    ...input,
+    passwordHash,
+    avatarColor: input.avatarColor ?? AVATAR_COLORS[n % AVATAR_COLORS.length],
   })
+  return { user: toAdminDTO(await getRow(db, id)), temporaryPassword }
 }
 
-export function updateUserAsAdmin(db: Db, actorId: number, id: number, patch: UpdateUserInput): AdminUserDTO {
-  const row = getRow(db, id)
-  if (patch.email !== undefined) ensureEmailFree(db, patch.email, id)
+export async function updateUserAsAdmin(db: Db, actorId: number, id: number, patch: UpdateUserInput): Promise<AdminUserDTO> {
+  const row = await getRow(db, id)
+  if (patch.email !== undefined) await ensureEmailFree(db, patch.email, id)
 
   const role = patch.role ?? row.role
   // Executor nunca é administrador.
@@ -140,11 +134,10 @@ export function updateUserAsAdmin(db: Db, actorId: number, id: number, patch: Up
     if (!isAdmin) throw new HttpError(409, "conflict", "Você não pode tirar o próprio acesso de administrador.")
   }
 
-  transaction(db, () => {
-    db.prepare(
+  await db.transaction(async (tx) => {
+    await tx.run(
       `UPDATE users SET name = ?, email = ?, role = ?, is_admin = ?, job_title = ?, avatar_color = ?, is_active = ?
-       WHERE id = ?`
-    ).run(
+       WHERE id = ?`,
       patch.name ?? row.name,
       (patch.email ?? row.email).toLowerCase(),
       role,
@@ -154,13 +147,13 @@ export function updateUserAsAdmin(db: Db, actorId: number, id: number, patch: Up
       isActive ? 1 : 0,
       id
     )
-    const { admins } = db.prepare("SELECT COUNT(*) AS admins FROM users WHERE is_admin = 1 AND is_active = 1").get() as {
-      admins: number
-    }
+    const { admins } = (await tx.get<{ admins: number }>(
+      "SELECT COUNT(*) AS admins FROM users WHERE is_admin = 1 AND is_active = 1"
+    ))!
     if (admins === 0) throw new HttpError(409, "conflict", "O sistema precisa de pelo menos um administrador ativo.")
-    if (!isActive) db.prepare("DELETE FROM sessions WHERE user_id = ?").run(id)
+    if (!isActive) await tx.run("DELETE FROM sessions WHERE user_id = ?", id)
   })
-  return toAdminDTO(getRow(db, id))
+  return toAdminDTO(await getRow(db, id))
 }
 
 /** Gera senha nova e encerra as sessões abertas da pessoa. */
@@ -169,12 +162,12 @@ export async function resetPasswordAsAdmin(
   id: number,
   hash: (password: string) => Promise<string>
 ): Promise<string> {
-  getRow(db, id)
+  await getRow(db, id)
   const temporaryPassword = generatePassword()
   const passwordHash = await hash(temporaryPassword)
-  transaction(db, () => {
-    db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(passwordHash, id)
-    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(id)
+  await db.transaction(async (tx) => {
+    await tx.run("UPDATE users SET password_hash = ? WHERE id = ?", passwordHash, id)
+    await tx.run("DELETE FROM sessions WHERE user_id = ?", id)
   })
   return temporaryPassword
 }

@@ -78,11 +78,27 @@ Perfis: **executor** cria tarefas para si, executa e envia para revisão; **gest
 para qualquer pessoa e aprova ou devolve na revisão; **administrador** é um gestor que também acessa
 Configurações. Cada pessoa troca a própria senha em "Alterar senha", no menu do usuário.
 
+### Banco no Turso (gratuito, na nuvem)
+
+Sem configuração, o banco é o arquivo local `data/tarefas.db`. Para usar o **Turso** (SQLite
+hospedado, com plano gratuito), crie um banco no painel do Turso (ou pela integração do Turso no
+Marketplace da Vercel) e defina as duas variáveis em `server/.env` (ou nas variáveis do servidor):
+
+```
+TURSO_DATABASE_URL=libsql://nome-do-banco.turso.io
+TURSO_AUTH_TOKEN=...
+```
+
+Na primeira execução as migrações criam as tabelas. Depois crie o administrador com
+`npm run usuarios -- criar …` na própria máquina, com as variáveis acima definidas — o comando mostra
+em qual banco está mexendo. O token dá acesso total ao banco: nunca o coloque no Git.
+
 ### Backup
 
-O banco é um arquivo só: `data/tarefas.db`. `npm run backup` gera uma cópia consistente mesmo com o
-sistema rodando (padrão: pasta `backups/`; ou `npm run backup -- D:\copias`). Agende esse comando
-no Agendador de Tarefas do Windows e guarde as cópias fora da máquina.
+Com o banco local, ele é um arquivo só: `data/tarefas.db`. `npm run backup` gera uma cópia consistente
+mesmo com o sistema rodando (padrão: pasta `backups/`; ou `npm run backup -- D:\copias`). Agende esse
+comando no Agendador de Tarefas do Windows e guarde as cópias fora da máquina. Com o Turso, a cópia de
+segurança e a restauração ficam no painel do próprio Turso.
 
 ## Configurações (administrador)
 
@@ -129,7 +145,8 @@ Categoria com tarefas não pode ser excluída, só desativada (some das opções
 ```
 shared/   Tipos, validações (zod), regras de negócio e leitura da criação rápida
           — usados pela API e pelas telas, com testes próprios
-server/   API (Express 5 + SQLite nativo do Node, rodando com tsx)
+server/   API (Express 5 + SQLite via @libsql/client — arquivo local ou Turso —, rodando com tsx)
+  src/db/connection.ts        acesso ao banco, transações e migrações
   src/db/migrations/          esquema do banco + categorias e checklists padrão
   src/services/tasks.ts       criação, edição, movimentação e histórico
   src/scripts/                usuarios, backup, smoke
@@ -138,7 +155,7 @@ client/   Telas (React + Vite + TypeScript + Tailwind 4 + shadcn/ui + dnd-kit + 
   src/index.css               tokens de design (cores, raios, sombras, animações)
   src/components/             componentes base (ui/) e de domínio (task/, board/)
   src/features/               auth, board (quadro, arraste, filtros) e task (painel, criação rápida)
-data/     banco SQLite (fora do git)
+data/     banco SQLite local (fora do git)
 ```
 
 ## API

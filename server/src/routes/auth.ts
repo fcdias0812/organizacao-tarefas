@@ -42,14 +42,14 @@ export function authRoutes(db: Db, options: { secureCookies: boolean }) {
     }
     limiter.succeed(ip, email)
 
-    const token = createSession(db, user.id)
+    const token = await createSession(db, user.id)
     res.cookie(SESSION_COOKIE, token, { ...cookie, maxAge: SESSION_TTL_MS })
     res.json({ user: toUserDTO(user) })
   })
 
-  router.post("/logout", (req, res) => {
+  router.post("/logout", async (req, res) => {
     const token = req.cookies?.[SESSION_COOKIE]
-    if (typeof token === "string") deleteSession(db, token)
+    if (typeof token === "string") await deleteSession(db, token)
     res.clearCookie(SESSION_COOKIE, cookie)
     res.status(204).end()
   })
@@ -66,9 +66,9 @@ export function authRoutes(db: Db, options: { secureCookies: boolean }) {
       throw new HttpError(422, "invalid_credentials", "A senha atual não confere.")
     }
     const passwordHash = await hashPassword(newPassword)
-    db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(passwordHash, me.id)
+    await db.run("UPDATE users SET password_hash = ? WHERE id = ?", passwordHash, me.id)
     const token = req.cookies?.[SESSION_COOKIE]
-    db.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?").run(me.id, hashToken(String(token)))
+    await db.run("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?", me.id, hashToken(String(token)))
     res.status(204).end()
   })
 

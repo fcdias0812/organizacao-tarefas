@@ -15,6 +15,7 @@
     "backup": "tsx src/scripts/backup.ts"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "@tarefas/shared": "*",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",

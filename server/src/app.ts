@@ -45,16 +45,16 @@ export function createApp({ db, secureCookies = false, clientDist }: AppOptions)
 
   api.use("/auth", authRoutes(db, { secureCookies }))
   // Público: o login também usa o nome e a cor do sistema.
-  api.get("/settings", (_req, res) => {
-    res.json({ settings: getSettings(db) })
+  api.get("/settings", async (_req, res) => {
+    res.json({ settings: await getSettings(db) })
   })
 
   api.use(requireAuth(db))
-  api.get("/users", (_req, res) => {
-    res.json({ users: listUsers(db) })
+  api.get("/users", async (_req, res) => {
+    res.json({ users: await listUsers(db) })
   })
-  api.get("/categories", (_req, res) => {
-    res.json({ categories: listCategories(db) })
+  api.get("/categories", async (_req, res) => {
+    res.json({ categories: await listCategories(db) })
   })
   api.use("/tasks", taskRoutes(db))
   api.use("/admin", adminRoutes(db))

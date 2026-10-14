@@ -26,37 +26,37 @@ import {
 export function taskRoutes(db: Db) {
   const router = Router()
 
-  router.get("/", (_req, res) => {
-    res.json({ tasks: listTasks(db) })
+  router.get("/", async (_req, res) => {
+    res.json({ tasks: await listTasks(db) })
   })
 
-  router.post("/", (req, res) => {
-    const task = createTask(db, currentUser(res), parseBody(createTaskSchema, req.body))
+  router.post("/", async (req, res) => {
+    const task = await createTask(db, currentUser(res), parseBody(createTaskSchema, req.body))
     res.status(201).json({ task })
   })
 
-  router.get("/:id", (req, res) => {
-    res.json({ task: getTaskDetail(db, parseId(req.params.id)) })
+  router.get("/:id", async (req, res) => {
+    res.json({ task: await getTaskDetail(db, parseId(req.params.id)) })
   })
 
-  router.patch("/:id", (req, res) => {
-    const task = updateTask(db, currentUser(res), parseId(req.params.id), parseBody(updateTaskSchema, req.body))
+  router.patch("/:id", async (req, res) => {
+    const task = await updateTask(db, currentUser(res), parseId(req.params.id), parseBody(updateTaskSchema, req.body))
     res.json({ task })
   })
 
   /** Muda de coluna e/ou de posição. Bloquear e devolver exigem `reason`. */
-  router.post("/:id/move", (req, res) => {
-    const task = moveTask(db, currentUser(res), parseId(req.params.id), parseBody(moveTaskSchema, req.body))
+  router.post("/:id/move", async (req, res) => {
+    const task = await moveTask(db, currentUser(res), parseId(req.params.id), parseBody(moveTaskSchema, req.body))
     res.json({ task })
   })
 
-  router.post("/:id/checklist", (req, res) => {
-    const item = addChecklistItem(db, parseId(req.params.id), parseBody(createChecklistItemSchema, req.body))
+  router.post("/:id/checklist", async (req, res) => {
+    const item = await addChecklistItem(db, parseId(req.params.id), parseBody(createChecklistItemSchema, req.body))
     res.status(201).json({ item })
   })
 
-  router.patch("/:id/checklist/:itemId", (req, res) => {
-    const item = updateChecklistItem(
+  router.patch("/:id/checklist/:itemId", async (req, res) => {
+    const item = await updateChecklistItem(
       db,
       currentUser(res),
       parseId(req.params.id),
@@ -66,18 +66,18 @@ export function taskRoutes(db: Db) {
     res.json({ item })
   })
 
-  router.delete("/:id/checklist/:itemId", (req, res) => {
-    removeChecklistItem(db, currentUser(res), parseId(req.params.id), parseId(req.params.itemId))
+  router.delete("/:id/checklist/:itemId", async (req, res) => {
+    await removeChecklistItem(db, currentUser(res), parseId(req.params.id), parseId(req.params.itemId))
     res.status(204).end()
   })
 
-  router.post("/:id/comments", (req, res) => {
-    const comment = addComment(db, currentUser(res), parseId(req.params.id), parseBody(commentSchema, req.body).body)
+  router.post("/:id/comments", async (req, res) => {
+    const comment = await addComment(db, currentUser(res), parseId(req.params.id), parseBody(commentSchema, req.body).body)
     res.status(201).json({ comment })
   })
 
-  router.patch("/:id/comments/:commentId", (req, res) => {
-    const comment = updateComment(
+  router.patch("/:id/comments/:commentId", async (req, res) => {
+    const comment = await updateComment(
       db,
       currentUser(res),
       parseId(req.params.id),
@@ -87,8 +87,8 @@ export function taskRoutes(db: Db) {
     res.json({ comment })
   })
 
-  router.delete("/:id/comments/:commentId", (req, res) => {
-    deleteComment(db, currentUser(res), parseId(req.params.id), parseId(req.params.commentId))
+  router.delete("/:id/comments/:commentId", async (req, res) => {
+    await deleteComment(db, currentUser(res), parseId(req.params.id), parseId(req.params.commentId))
     res.status(204).end()
   })
 

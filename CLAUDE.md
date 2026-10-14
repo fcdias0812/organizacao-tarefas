@@ -10,8 +10,12 @@ Visão geral, comandos e regras de negócio: ver `README.md`.
   (`server/src/services/tasks.ts`), a interface antecipa (`previewMove`, `checkAssign`…). Mudou regra → teste em `shared/src/rules.test.ts`.
 - Validação de entrada: schemas zod em `shared/src/schemas.ts`. O `server` não depende de zod diretamente
   (a raiz tem zod 3 vindo do CLI do shadcn; o `shared` tem zod 4 próprio).
-- Banco: SQL puro com `node:sqlite`. Mudança de esquema = novo arquivo em `server/src/db/migrations/NNN_nome.sql`
-  (nunca editar migração já aplicada). Escritas que mexem em mais de uma tabela vão dentro de `transaction()`.
+- Banco: SQL puro (SQLite) via `@libsql/client` — arquivo local em desenvolvimento/testes, Turso em produção
+  (`TURSO_DATABASE_URL`). Todo acesso é assíncrono pela interface `Db` de `server/src/db/connection.ts`
+  (`all`/`get`/`run`/`exec`). Mudança de esquema = novo arquivo em `server/src/db/migrations/NNN_nome.sql`
+  (nunca editar migração já aplicada). Escritas que mexem em mais de uma tabela vão dentro de
+  `db.transaction(async (tx) => …)`, usando **só o `tx`** lá dentro.
+- Chaves estrangeiras ficam desligadas no Turso: nunca dependa de `ON DELETE CASCADE`, apague os filhos explicitamente.
 - Datas de prazo são `AAAA-MM-DD` em horário **local** — nunca usar `toISOString()` para elas.
 - **Nada de nomes fixos na interface**: colunas, prioridades (nome e cor), categorias, nome do sistema, cor
   principal, prazo "vence em breve" e motivo mínimo vêm de Configurações. No cliente use `useAppConfig()`
