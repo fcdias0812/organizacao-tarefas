@@ -16,9 +16,11 @@ Visão geral, comandos e regras de negócio: ver `README.md`.
   (nunca editar migração já aplicada). Escritas que mexem em mais de uma tabela vão dentro de
   `db.transaction(async (tx) => …)`, usando **só o `tx`** lá dentro.
 - Chaves estrangeiras ficam desligadas no Turso: nunca dependa de `ON DELETE CASCADE`, apague os filhos explicitamente.
-- Vercel: `server.ts` (raiz) → `dist-vercel/vercel.mjs`, gerado por `npm run build:vercel` (esbuild) a partir de
-  `server/src/vercel.ts`. Não troque isso por import direto dos `.ts`: a Vercel compila arquivo a arquivo e o
-  Node recusa os imports sem extensão. Depois de mexer nisso, rode `npx vercel build` e teste a função gerada.
+- Vercel (preset "Other"): telas em `public/` (outputDirectory) e a função `api/index.ts` → `dist-vercel/vercel.mjs`,
+  gerado por `npm run build:vercel` (esbuild) a partir de `server/src/vercel.ts`. Não troque por import direto dos
+  `.ts` (a Vercel compila arquivo a arquivo e o Node recusa imports sem extensão) nem pelo preset Express (ele
+  recolhe `public/` antes do build, e as telas somem). Depois de mexer nisso: apague `public/` e `dist-vercel/`,
+  rode `npx vercel build` e teste a função gerada.
 - Datas de prazo são `AAAA-MM-DD` em horário **local** — nunca usar `toISOString()` para elas.
 - **Nada de nomes fixos na interface**: colunas, prioridades (nome e cor), categorias, nome do sistema, cor
   principal, prazo "vence em breve" e motivo mínimo vêm de Configurações. No cliente use `useAppConfig()`

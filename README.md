@@ -109,9 +109,11 @@ Variables*:
 Sem essas variáveis a função se recusa a subir (a Vercel apaga arquivos locais, então o banco precisa
 ser o Turso). O cookie de sessão sai sempre com `Secure`, já que a Vercel usa HTTPS.
 
-Como funciona: `npm run build:vercel` gera as telas em `public/` e empacota a API num arquivo só em
-`dist-vercel/` (com as migrações); o `server.ts` da raiz é a entrada que a Vercel procura. Para conferir
-na própria máquina antes de publicar: `npx vercel build`.
+Como funciona (preset "Other", definido no `vercel.json`): `npm run build:vercel` gera as telas em
+`public/` (pasta de saída, servida pela CDN) e empacota a API num arquivo só em `dist-vercel/` (com as
+migrações). A função `api/index.ts` atende todo `/api/*`; o resto cai no `index.html`. Para conferir na
+própria máquina antes de publicar, **apague `public/` e `dist-vercel/` antes** e rode `npx vercel build`
+— com as pastas já existindo o resultado engana.
 
 Atenção: o plano gratuito (Hobby) da Vercel é só para uso pessoal, não comercial.
 

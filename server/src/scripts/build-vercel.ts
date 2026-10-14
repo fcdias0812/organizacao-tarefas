@@ -29,7 +29,7 @@ await build({
 // connection.ts procura as migrações em "migrations/" ao lado do próprio arquivo.
 cpSync(join(ROOT_DIR, "server", "src", "db", "migrations"), join(outDir, "migrations"), { recursive: true })
 
-// Tipos mínimos para o server.ts da raiz importar o arquivo gerado.
+// Tipos mínimos para o api/index.ts importar o arquivo gerado.
 writeFileSync(
   join(outDir, "vercel.d.mts"),
   'import type { Express } from "express"\nexport declare function createVercelApp(): Promise<Express>\n'

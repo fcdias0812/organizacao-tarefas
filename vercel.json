@@ -1,11 +1,15 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "express",
+  "framework": null,
   "buildCommand": "npm run build:vercel",
+  "outputDirectory": "public",
   "functions": {
-    "server.ts": {
+    "api/index.ts": {
       "includeFiles": "dist-vercel/migrations/**"
     }
   },
-  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api?__path=:path*" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
 }
