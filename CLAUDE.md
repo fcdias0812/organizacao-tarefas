@@ -1,0 +1,32 @@
+# Tarefas TI — guia para o Claude
+
+Sistema interno de tarefas do setor de TI (3 usuários). Monorepo npm workspaces: `shared/`, `server/`, `client/`.
+Visão geral, comandos e regras de negócio: ver `README.md`.
+
+## Convenções
+
+- **Código em inglês; interface, mensagens de erro e conversa com o usuário em português do Brasil.**
+- Regras de negócio ficam **só** em `shared/src/rules.ts` e valem nos dois lados: o servidor decide
+  (`server/src/services/tasks.ts`), a interface antecipa (`previewMove`, `checkAssign`…). Mudou regra → teste em `shared/src/rules.test.ts`.
+- Validação de entrada: schemas zod em `shared/src/schemas.ts`. O `server` não depende de zod diretamente
+  (a raiz tem zod 3 vindo do CLI do shadcn; o `shared` tem zod 4 próprio).
+- Banco: SQL puro com `node:sqlite`. Mudança de esquema = novo arquivo em `server/src/db/migrations/NNN_nome.sql`
+  (nunca editar migração já aplicada). Escritas que mexem em mais de uma tabela vão dentro de `transaction()`.
+- Datas de prazo são `AAAA-MM-DD` em horário **local** — nunca usar `toISOString()` para elas.
+- Histórico (`task_events`) só recebe inserções.
+
+## Design
+
+- Tokens em `client/src/index.css`. Violeta (`brand-600` #7C3AED) só em ação principal, destaque e estado ativo.
+- Cor nos botões indica o resultado: violeta neutro, verde conclui, âmbar devolve, vermelho bloqueia/exclui, cinza indisponível.
+- Cantos arredondados (cards `rounded-xl`, painéis `rounded-3xl`, botões pill), sombras difusas, quase sem bordas.
+- `client/src/components/ui/` são componentes shadcn **remodelados**. Nunca rode `shadcn add` com `-o`:
+  ele já sobrescreveu `button.tsx` uma vez. Depois de qualquer `shadcn add`, confira o diff de `components/ui`.
+
+## Verificação antes de entregar
+
+```bash
+npm test && npm run typecheck && npm run lint && npm run build
+```
+
+Os dois avisos `only-export-components` em `button.tsx` e `badge.tsx` são esperados (padrão do shadcn).

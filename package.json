@@ -1,0 +1,33 @@
+{
+  "name": "organizacao-tarefas",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Gestão de tarefas do setor de TI",
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c magenta,cyan \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w client",
+    "start": "npm run start -w server",
+    "seed": "npm run seed -w server",
+    "db:reset": "npm run db:reset -w server",
+    "test": "npm test -w shared && npm test -w server",
+    "typecheck": "npm run typecheck -w shared && npm run typecheck -w server && tsc -b client",
+    "lint": "npm run lint -w client",
+    "smoke": "npm run smoke -w server",
+    "usuarios": "npm run usuarios -w server --",
+    "backup": "npm run backup -w server --"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "concurrently": "^10.0.6",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.2"
+  }
+}

@@ -1,0 +1,66 @@
+# Chamadas prontas para testar a API à mão.
+# No VS Code, instale a extensão "REST Client" e clique em "Send Request" acima de cada bloco.
+# Com `npm run dev` no ar. A senha dos usuários de exemplo é a SEED_PASSWORD de server/.env.example.
+
+@api = http://localhost:3333/api
+@password = tarefas@2026
+
+### Entrar como gestor (Rafael). O cookie de sessão fica salvo para as próximas chamadas.
+POST {{api}}/auth/login
+Content-Type: application/json
+
+{ "email": "rafael@tarefas.local", "password": "{{password}}" }
+
+### Quem sou eu
+GET {{api}}/auth/me
+
+### Quadro completo
+GET {{api}}/tasks
+
+### Detalhe de uma tarefa (checklist + histórico)
+GET {{api}}/tasks/11
+
+### Criar tarefa (o checklist padrão da categoria é copiado)
+POST {{api}}/tasks
+Content-Type: application/json
+
+{ "title": "Trocar toner da impressora do RH", "category": "ticket", "priority": "high", "dueDate": "2026-10-20", "assigneeId": 3 }
+
+### Tentar mandar para Revisão com checklist incompleto (deve dar 409 com a mensagem)
+POST {{api}}/tasks/1/move
+Content-Type: application/json
+
+{ "status": "review" }
+
+### Bloquear sem motivo (deve dar 422)
+POST {{api}}/tasks/1/move
+Content-Type: application/json
+
+{ "status": "blocked" }
+
+### Aprovar um card que está em Revisão (gestor)
+POST {{api}}/tasks/15/move
+Content-Type: application/json
+
+{ "status": "done" }
+
+### Devolver um card da Revisão (gestor, motivo obrigatório)
+POST {{api}}/tasks/16/move
+Content-Type: application/json
+
+{ "status": "in_progress", "reason": "Faltou registrar a evidência do teste" }
+
+### Marcar item do checklist
+PATCH {{api}}/tasks/1/checklist/1
+Content-Type: application/json
+
+{ "isDone": true }
+
+### Usuários e categorias
+GET {{api}}/users
+
+###
+GET {{api}}/categories
+
+### Sair
+POST {{api}}/auth/logout

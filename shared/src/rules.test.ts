@@ -1,0 +1,171 @@
+import assert from "node:assert/strict"
+import { describe, it } from "node:test"
+
+import {
+  checkAssign,
+  checkChecklistEditable,
+  checkChecklistItemRemoval,
+  checkMove,
+  positionBetween,
+  previewMove,
+  type MoveInput,
+} from "./rules"
+
+const base: MoveInput = { from: "todo", to: "in_progress", actorRole: "executor", checklistDone: 0, checklistTotal: 4 }
+const move = (patch: Partial<MoveInput>) => checkMove({ ...base, ...patch })
+
+describe("checkMove", () => {
+  it("reordenar na mesma coluna não gera evento", () => {
+    assert.deepEqual(move({ from: "todo", to: "todo" }), { ok: true, event: null })
+  })
+
+  it("A fazer ↔ Em andamento é livre", () => {
+    assert.deepEqual(move({ from: "todo", to: "in_progress" }), { ok: true, event: "moved" })
+    assert.deepEqual(move({ from: "in_progress", to: "todo" }), { ok: true, event: "moved" })
+  })
+
+  describe("Revisão exige checklist 100%", () => {
+    it("recusa com itens faltando e diz quantos", () => {
+      const r = move({ from: "in_progress", to: "review", checklistDone: 2, checklistTotal: 4 })
+      assert.equal(r.ok, false)
+      assert.equal(!r.ok && r.code, "checklist_incomplete")
+      assert.match(!r.ok ? r.message : "", /Faltam 2 itens/)
+    })
+
+    it("usa singular quando falta 1", () => {
+      const r = move({ from: "in_progress", to: "review", checklistDone: 3, checklistTotal: 4 })
+      assert.match(!r.ok ? r.message : "", /Falta 1 item/)
+    })
+
+    it("recusa checklist vazio", () => {
+      const r = move({ from: "in_progress", to: "review", checklistDone: 0, checklistTotal: 0 })
+      assert.equal(!r.ok && r.code, "checklist_incomplete")
+    })
+
+    it("aceita com tudo marcado, de A fazer ou Em andamento", () => {
+      for (const from of ["todo", "in_progress"] as const) {
+        assert.deepEqual(move({ from, to: "review", checklistDone: 4 }), { ok: true, event: "sent_to_review" })
+      }
+    })
+  })
+
+  describe("saindo da Revisão", () => {
+    it("executor não move", () => {
+      for (const to of ["done", "in_progress", "todo"] as const) {
+        const r = move({ from: "review", to, reason: "motivo qualquer" })
+        assert.equal(!r.ok && r.code, "forbidden")
+      }
+    })
+
+    it("gestor aprova", () => {
+      assert.deepEqual(move({ from: "review", to: "done", actorRole: "manager" }), { ok: true, event: "approved" })
+    })
+
+    it("gestor devolve só com motivo", () => {
+      const sem = move({ from: "review", to: "in_progress", actorRole: "manager" })
+      assert.equal(!sem.ok && sem.code, "reason_required")
+      const curto = move({ from: "review", to: "in_progress", actorRole: "manager", reason: "  a " })
+      assert.equal(!curto.ok && curto.code, "reason_required")
+      assert.deepEqual(
+        move({ from: "review", to: "in_progress", actorRole: "manager", reason: "Faltou testar no celular" }),
+        { ok: true, event: "returned" }
+      )
+    })
+
+    it("gestor não manda da Revisão para A fazer ou Bloqueado", () => {
+      for (const to of ["todo", "blocked"] as const) {
+        const r = move({ from: "review", to, actorRole: "manager", reason: "motivo" })
+        assert.equal(!r.ok && r.code, "invalid_transition")
+      }
+    })
+  })
+
+  it("ninguém conclui sem passar pela Revisão", () => {
+    for (const actorRole of ["manager", "executor"] as const) {
+      const r = move({ from: "in_progress", to: "done", actorRole, checklistDone: 4 })
+      assert.equal(!r.ok && r.code, "invalid_transition")
+    }
+  })
+
+  it("bloquear exige motivo", () => {
+    const r = move({ from: "in_progress", to: "blocked" })
+    assert.equal(!r.ok && r.code, "reason_required")
+    assert.deepEqual(move({ from: "in_progress", to: "blocked", reason: "Aguardando fornecedor" }), {
+      ok: true,
+      event: "blocked",
+    })
+  })
+
+  it("desbloquear volta para A fazer ou Em andamento", () => {
+    assert.deepEqual(move({ from: "blocked", to: "in_progress" }), { ok: true, event: "unblocked" })
+    assert.deepEqual(move({ from: "blocked", to: "todo" }), { ok: true, event: "unblocked" })
+    const r = move({ from: "blocked", to: "review", checklistDone: 4 })
+    assert.equal(!r.ok && r.code, "invalid_transition")
+  })
+
+  it("reabrir concluído é só com o gestor", () => {
+    const r = move({ from: "done", to: "in_progress" })
+    assert.equal(!r.ok && r.code, "forbidden")
+    assert.deepEqual(move({ from: "done", to: "in_progress", actorRole: "manager" }), { ok: true, event: "reopened" })
+  })
+})
+
+describe("checkAssign", () => {
+  it("gestor atribui para qualquer um", () => {
+    assert.equal(checkAssign({ id: 1, role: "manager" }, 3).ok, true)
+    assert.equal(checkAssign({ id: 1, role: "manager" }, null).ok, true)
+  })
+
+  it("executor só atribui para si", () => {
+    assert.equal(checkAssign({ id: 3, role: "executor" }, 3).ok, true)
+    assert.equal(checkAssign({ id: 3, role: "executor" }, 1).ok, false)
+    assert.equal(checkAssign({ id: 3, role: "executor" }, null).ok, false)
+  })
+})
+
+describe("checklist", () => {
+  it("fica travado em Revisão e Concluído", () => {
+    assert.equal(checkChecklistEditable("in_progress").ok, true)
+    assert.equal(checkChecklistEditable("blocked").ok, true)
+    assert.equal(checkChecklistEditable("review").ok, false)
+    assert.equal(checkChecklistEditable("done").ok, false)
+  })
+
+  it("executor não remove item do padrão da categoria", () => {
+    assert.equal(checkChecklistItemRemoval("executor", true).ok, false)
+    assert.equal(checkChecklistItemRemoval("executor", false).ok, true)
+    assert.equal(checkChecklistItemRemoval("manager", true).ok, true)
+  })
+})
+
+describe("previewMove", () => {
+  it("bloquear e devolver são permitidos, mas pedem motivo", () => {
+    assert.deepEqual(previewMove({ from: "todo", to: "blocked", actorRole: "executor", checklistDone: 0, checklistTotal: 4 }), {
+      ok: true,
+      event: "blocked",
+      needsReason: true,
+    })
+    const devolver = previewMove({ from: "review", to: "in_progress", actorRole: "manager", checklistDone: 4, checklistTotal: 4 })
+    assert.equal(devolver.ok && devolver.needsReason, true)
+  })
+
+  it("movimentos comuns não pedem motivo e recusas continuam recusas", () => {
+    const mover = previewMove({ from: "todo", to: "in_progress", actorRole: "executor", checklistDone: 0, checklistTotal: 4 })
+    assert.equal(mover.ok && mover.needsReason, false)
+    const revisao = previewMove({ from: "todo", to: "review", actorRole: "executor", checklistDone: 1, checklistTotal: 4 })
+    assert.equal(!revisao.ok && revisao.code, "checklist_incomplete")
+  })
+})
+
+describe("positionBetween", () => {
+  it("coluna vazia, topo, fim e meio", () => {
+    assert.equal(positionBetween([]), 1024)
+    assert.equal(positionBetween([1024, 2048], 0), 0)
+    assert.equal(positionBetween([1024, 2048]), 3072)
+    assert.equal(positionBetween([1024, 2048], 1), 1536)
+  })
+
+  it("avisa quando não há espaço entre os vizinhos", () => {
+    assert.equal(positionBetween([1, 1 + 1e-9], 1), null)
+  })
+})
