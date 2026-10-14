@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
-import { parseQuickTask } from "./quickParse"
+import { parseQuickTask, quickSuggestions, type QuickParseOptions } from "./quickParse"
 
 const users = [
   { id: 1, name: "Marcos Almeida" },
@@ -85,5 +85,51 @@ describe("categorias e prioridades personalizadas", () => {
     const opts = { users, categories, today, priorityLabels: { urgent: "Crítica" } }
     assert.equal(parseQuickTask("x !critica", opts).priority, "urgent")
     assert.equal(parseQuickTask("x !urgente", opts).priority, "urgent")
+  })
+})
+
+describe("quickSuggestions", () => {
+  const opts: QuickParseOptions = { users, categories, today }
+  const at = (text: string, options = opts) => quickSuggestions(text, text.length, options)
+  const tokens = (text: string, options = opts) => at(text, options)?.items.map((i) => i.token)
+
+  it("só # mostra as categorias, na ordem de Configurações", () => {
+    assert.deepEqual(tokens("Trocar mouse #"), ["#chamado", "#infra", "#compra", "#projeto", "#rotina", "#telefoniaip"])
+  })
+
+  it("filtra pelo começo do nome ou da chave, sem acento nem maiúscula", () => {
+    assert.deepEqual(tokens("x #CH"), ["#chamado"])
+    assert.deepEqual(tokens("x #tick"), ["#chamado"])
+    assert.deepEqual(tokens("x #tel"), ["#telefoniaip"])
+  })
+
+  it("informa o trecho a substituir, mesmo com o cursor no meio do atalho", () => {
+    const text = "Trocar #inf mouse"
+    assert.deepEqual(quickSuggestions(text, 9, opts), {
+      start: 7,
+      end: 11,
+      items: [{ kind: "category", value: "infra", token: "#infra", label: "Infra" }],
+    })
+  })
+
+  it("sugere prioridades (com nomes personalizados) e pessoas", () => {
+    assert.deepEqual(tokens("x !"), ["!urgente", "!alta", "!media", "!baixa"])
+    assert.deepEqual(tokens("x !crit", { ...opts, priorityLabels: { urgent: "Crítica" } }), ["!critica"])
+    assert.deepEqual(tokens("x @ju"), ["@juliana"])
+    // Pelo sobrenome também, mas o atalho é o primeiro nome.
+    assert.deepEqual(tokens("x @lim"), ["@rafael"])
+  })
+
+  it("nada a sugerir fora de atalho, sem resultado ou com o atalho já completo", () => {
+    assert.equal(at("Trocar mouse"), null)
+    assert.equal(at("x #zzz"), null)
+    assert.equal(at("x #infra"), null)
+    assert.equal(at("x #infra "), null)
+  })
+
+  it("o atalho sugerido é reconhecido pelo parseQuickTask", () => {
+    for (const s of at("x #")!.items) assert.equal(parseQuickTask(`x ${s.token}`, opts).category, s.value)
+    for (const s of at("x !")!.items) assert.equal(parseQuickTask(`x ${s.token}`, opts).priority, s.value)
+    for (const s of at("x @")!.items) assert.equal(String(parseQuickTask(`x ${s.token}`, opts).assigneeId), s.value)
   })
 })

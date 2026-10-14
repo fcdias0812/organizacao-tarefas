@@ -1,4 +1,4 @@
-import type { CategoryKey, TaskPriority } from "./types"
+import { TASK_PRIORITIES, type CategoryKey, type TaskPriority } from "./types"
 
 /**
  * Lê a linha da criação rápida e separa o título dos atalhos:
@@ -173,4 +173,85 @@ export function parseQuickTask(input: string, options: QuickParseOptions): Quick
 
   result.title = kept.join(" ")
   return result
+}
+
+/* ───────────────────────── sugestões enquanto digita ───────────────────────── */
+
+export type QuickSuggestionKind = "category" | "priority" | "assignee"
+
+export interface QuickSuggestion {
+  kind: QuickSuggestionKind
+  /** Chave da categoria, prioridade ou id da pessoa (como texto). */
+  value: string
+  /** Atalho completo que entra no campo, ex.: "#chamado". */
+  token: string
+  label: string
+}
+
+export interface QuickSuggestions {
+  /** Trecho do texto (início/fim) que a sugestão escolhida substitui. */
+  start: number
+  end: number
+  items: QuickSuggestion[]
+}
+
+const PRIORITY_DEFAULT_LABELS: Record<TaskPriority, string> = {
+  urgent: "Urgente",
+  high: "Alta",
+  medium: "Média",
+  low: "Baixa",
+}
+
+const tokenWord = (s: string) => normalize(s).replace(/\s+/g, "")
+
+/**
+ * Sugestões para o atalho que está sendo digitado onde está o cursor (#, ! ou @).
+ * Os atalhos sugeridos são os mesmos que `parseQuickTask` reconhece. Retorna null
+ * quando o cursor não está num atalho ou quando ele já está escrito por inteiro.
+ */
+export function quickSuggestions(input: string, caret: number, options: QuickParseOptions, limit = 6): QuickSuggestions | null {
+  const before = input.slice(0, caret)
+  const start = before.search(/\S*$/)
+  const rest = input.slice(caret).search(/\s|$/)
+  const end = caret + rest
+  const word = input.slice(start, end)
+  const head = word[0]
+  if (head !== "#" && head !== "!" && head !== "@") return null
+  const typed = normalize(word.slice(1))
+
+  let items: (QuickSuggestion & { words: string[] })[]
+  if (head === "#") {
+    items = (options.categories ?? []).map((c) => ({
+      kind: "category" as const,
+      value: c.key,
+      token: `#${tokenWord(c.name)}`,
+      label: c.name,
+      words: [tokenWord(c.name), normalize(c.key)],
+    }))
+  } else if (head === "!") {
+    items = TASK_PRIORITIES.map((p) => {
+      const label = options.priorityLabels?.[p] ?? PRIORITY_DEFAULT_LABELS[p]
+      return {
+        kind: "priority" as const,
+        value: p,
+        token: `!${tokenWord(label)}`,
+        label,
+        words: [tokenWord(label), normalize(PRIORITY_DEFAULT_LABELS[p])],
+      }
+    })
+  } else {
+    items = options.users.map((u) => ({
+      kind: "assignee" as const,
+      value: String(u.id),
+      token: `@${normalize(u.name.split(" ")[0])}`,
+      label: u.name,
+      words: normalize(u.name).split(/\s+/),
+    }))
+  }
+
+  const matches = items.filter((item) => item.words.some((w) => w.startsWith(typed)))
+  // Atalho já completo: nada a sugerir (Enter volta a criar a tarefa).
+  if (matches.some((item) => item.token === `${head}${typed}`)) return null
+  if (matches.length === 0) return null
+  return { start, end, items: matches.slice(0, limit).map(({ words: _words, ...item }) => item) }
 }

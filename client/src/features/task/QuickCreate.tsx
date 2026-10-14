@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { CornerDownLeft, Plus, TriangleAlert } from "lucide-react"
 import { toast } from "sonner"
@@ -6,7 +6,10 @@ import { Dialog as DialogPrimitive } from "radix-ui"
 import {
   checkAssign,
   parseQuickTask,
+  quickSuggestions,
   type CreateTaskInput,
+  type QuickSuggestion,
+  type TaskPriority,
   type TaskDetailDTO,
   type TaskSummaryDTO,
   type UserDTO,
@@ -47,16 +50,29 @@ function useCreateTask() {
  * #categoria, !prioridade, @pessoa e prazo — viram selos abaixo do campo.
  */
 export function QuickCreate({ open, onOpenChange, me, users, onCreated }: QuickCreateProps) {
+  // Esc com a lista de sugestões aberta fecha só a lista, não a janela.
+  const escapeRef = useRef<(() => boolean) | null>(null)
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-ink/15 backdrop-blur-[2px] duration-200 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" />
         <DialogPrimitive.Content
           aria-describedby={undefined}
+          onEscapeKeyDown={(e) => {
+            if (escapeRef.current?.()) e.preventDefault()
+          }}
           className="fixed top-[16vh] left-1/2 z-50 w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 rounded-3xl bg-surface p-2 shadow-pop outline-none duration-200 ease-(--ease-out-soft) data-open:animate-in data-open:fade-in-0 data-open:zoom-in-96 data-open:slide-in-from-top-2 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-96"
         >
           <DialogPrimitive.Title className="sr-only">Nova tarefa</DialogPrimitive.Title>
-          {open && <QuickCreateForm me={me} users={users} onDone={() => onOpenChange(false)} onCreated={onCreated} />}
+          {open && (
+            <QuickCreateForm
+              me={me}
+              users={users}
+              onDone={() => onOpenChange(false)}
+              onCreated={onCreated}
+              escapeRef={escapeRef}
+            />
+          )}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
@@ -68,15 +84,19 @@ function QuickCreateForm({
   users,
   onDone,
   onCreated,
+  escapeRef,
 }: {
   me: UserDTO
   users: UserDTO[]
   onDone: () => void
   onCreated: (task: TaskDetailDTO, options: { open: boolean }) => void
+  escapeRef: React.RefObject<(() => boolean) | null>
 }) {
   const [text, setText] = useState("")
+  const [caret, setCaret] = useState(0)
   const [today] = useState(() => new Date())
   const create = useCreateTask()
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const config = useAppConfig()
   const categories = config.activeCategories
@@ -96,6 +116,35 @@ function QuickCreateForm({
   const assignee = users.find((u) => u.id === assigneeId) ?? me
   const assignCheck = checkAssign(me, assigneeId)
   const canSubmit = parsed.title.trim().length > 0 && assignCheck.ok && !!category && !create.isPending
+
+  // Sugestões do atalho sob o cursor (#categoria, !prioridade, @pessoa).
+  const suggestions = useMemo(
+    () => quickSuggestions(text, caret, { users, categories, priorityLabels }),
+    [text, caret, users, categories, priorityLabels]
+  )
+  const suggestionKey = suggestions ? `${suggestions.start}:${text.slice(suggestions.start, suggestions.end)}` : ""
+  const [highlight, setHighlight] = useState({ key: "", index: 0 })
+  const [dismissedKey, setDismissedKey] = useState("")
+  const listOpen = !!suggestions && dismissedKey !== suggestionKey
+  const activeIndex = highlight.key === suggestionKey ? highlight.index : 0
+
+  useEffect(() => {
+    escapeRef.current = () => {
+      if (!listOpen) return false
+      setDismissedKey(suggestionKey)
+      return true
+    }
+  }, [escapeRef, listOpen, suggestionKey])
+
+  const choose = (item: QuickSuggestion) => {
+    if (!suggestions) return
+    const after = text.slice(suggestions.end)
+    const next = `${text.slice(0, suggestions.start)}${item.token}${after.startsWith(" ") ? "" : " "}${after}`
+    const position = suggestions.start + item.token.length + 1
+    setText(next)
+    setCaret(position)
+    requestAnimationFrame(() => inputRef.current?.setSelectionRange(position, position))
+  }
 
   const submit = (keepOpen: boolean) => {
     if (!canSubmit || !category) return
@@ -126,10 +175,30 @@ function QuickCreateForm({
           <Plus className="size-4" />
         </span>
         <input
+          ref={inputRef}
           autoFocus
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value)
+            setCaret(e.target.selectionStart ?? e.target.value.length)
+          }}
+          onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
           onKeyDown={(e) => {
+            if (listOpen && suggestions) {
+              const count = suggestions.items.length
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault()
+                const step = e.key === "ArrowDown" ? 1 : -1
+                setHighlight({ key: suggestionKey, index: (activeIndex + step + count) % count })
+                return
+              }
+              if (e.key === "Enter" || e.key === "Tab") {
+                // Com a lista aberta, Enter/Tab completam o atalho em vez de criar.
+                e.preventDefault()
+                choose(suggestions.items[activeIndex])
+                return
+              }
+            }
             if (e.key === "Enter" && e.shiftKey) {
               e.preventDefault()
               submit(true)
@@ -138,12 +207,48 @@ function QuickCreateForm({
           maxLength={260}
           placeholder="O que precisa ser feito?"
           aria-label="Nova tarefa"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={listOpen}
+          aria-controls={listOpen ? "quick-suggestions" : undefined}
+          aria-activedescendant={listOpen ? `quick-suggestion-${activeIndex}` : undefined}
           className="h-12 min-w-0 flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-ink-3"
         />
         {create.isPending && (
           <span className="size-4 animate-spin rounded-full border-2 border-brand-200 border-t-brand-600" aria-label="Criando" />
         )}
       </div>
+
+      {listOpen && suggestions && (
+        <ul
+          id="quick-suggestions"
+          role="listbox"
+          aria-label="Sugestões de atalho"
+          className="mx-2 mb-2 animate-pop-in rounded-xl bg-surface p-1 shadow-card"
+        >
+          {suggestions.items.map((item, index) => (
+            <li
+              key={`${item.kind}:${item.value}`}
+              id={`quick-suggestion-${index}`}
+              role="option"
+              aria-selected={index === activeIndex}
+              // mousedown: escolhe sem tirar o foco do campo.
+              onMouseDown={(e) => {
+                e.preventDefault()
+                choose(item)
+              }}
+              onMouseEnter={() => setHighlight({ key: suggestionKey, index })}
+              className={cn(
+                "flex h-9 cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-sm text-ink",
+                index === activeIndex && "bg-brand-50"
+              )}
+            >
+              <SuggestionLabel item={item} users={users} />
+              <span className="ml-auto font-mono text-xs text-ink-3">{item.token}</span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <div className="flex flex-wrap items-center gap-1.5 border-t border-hairline px-3 pt-2.5 pb-1.5">
         {category && (
@@ -193,6 +298,18 @@ function QuickCreateForm({
         </p>
       )}
     </form>
+  )
+}
+
+function SuggestionLabel({ item, users }: { item: QuickSuggestion; users: UserDTO[] }) {
+  if (item.kind === "category") return <CategoryLabel category={item.value} className="text-sm text-ink" />
+  if (item.kind === "priority") return <PriorityDot priority={item.value as TaskPriority} showLabel className="text-sm text-ink" />
+  const user = users.find((u) => String(u.id) === item.value)
+  return (
+    <span className="inline-flex items-center gap-2">
+      {user && <UserAvatar user={user} size="sm" withTooltip={false} className="size-5 ring-0" />}
+      {item.label}
+    </span>
   )
 }
 
