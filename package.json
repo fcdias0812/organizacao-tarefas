@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "Gestão de tarefas do setor de TI",
+  "type": "module",
   "workspaces": [
     "shared",
     "server",
@@ -14,6 +15,7 @@
   "scripts": {
     "dev": "concurrently -k -n api,web -c magenta,cyan \"npm run dev -w server\" \"npm run dev -w client\"",
     "build": "npm run build -w client",
+    "build:vercel": "npm run build -w client -- --outDir ../public --emptyOutDir && npm run build:vercel -w server",
     "start": "npm run start -w server",
     "seed": "npm run seed -w server",
     "db:reset": "npm run db:reset -w server",

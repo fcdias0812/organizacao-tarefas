@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "smoke": "tsx src/scripts/smoke.ts",
     "usuarios": "tsx src/scripts/users.ts",
-    "backup": "tsx src/scripts/backup.ts"
+    "backup": "tsx src/scripts/backup.ts",
+    "build:vercel": "tsx src/scripts/build-vercel.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
@@ -25,6 +26,7 @@
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.6",
-    "@types/node": "^24.19.2"
+    "@types/node": "^24.19.2",
+    "esbuild": "^0.28.2"
   }
 }

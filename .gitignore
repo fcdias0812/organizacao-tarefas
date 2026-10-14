@@ -10,3 +10,8 @@ data/*.db-*
 .vscode/*
 !.vscode/extensions.json
 backups/
+
+# Vercel
+.vercel
+public/
+dist-vercel/

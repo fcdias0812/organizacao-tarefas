@@ -27,6 +27,7 @@ npm run dev       # API em :3333 e telas em :5173 (com recarga automática)
 |---|---|
 | `npm run dev` | API e telas em modo desenvolvimento |
 | `npm run build` | Gera as telas otimizadas em `client/dist` |
+| `npm run build:vercel` | Build da Vercel: telas em `public/` e API empacotada em `dist-vercel/` |
 | `npm start` | Sobe o sistema completo (API + telas) num único processo, porta 3333 |
 | `npm test` | Testes das regras de negócio, da criação rápida e da API |
 | `npm run typecheck` | Confere os tipos de todo o projeto |
@@ -92,6 +93,27 @@ TURSO_AUTH_TOKEN=...
 Na primeira execução as migrações criam as tabelas. Depois crie o administrador com
 `npm run usuarios -- criar …` na própria máquina, com as variáveis acima definidas — o comando mostra
 em qual banco está mexendo. O token dá acesso total ao banco: nunca o coloque no Git.
+
+### Publicando na Vercel
+
+O projeto já vem pronto (`vercel.json`): as telas vão para a CDN da Vercel e a API vira uma função.
+Na Vercel, importe o repositório do GitHub **sem mudar** Framework, Root Directory nem comandos
+(tudo vem do `vercel.json`) e, antes do primeiro deploy, cadastre em *Settings → Environment
+Variables*:
+
+| Variável | Valor |
+|---|---|
+| `TURSO_DATABASE_URL` | URL `libsql://…` do banco no Turso |
+| `TURSO_AUTH_TOKEN` | token do banco (nunca no Git) |
+
+Sem essas variáveis a função se recusa a subir (a Vercel apaga arquivos locais, então o banco precisa
+ser o Turso). O cookie de sessão sai sempre com `Secure`, já que a Vercel usa HTTPS.
+
+Como funciona: `npm run build:vercel` gera as telas em `public/` e empacota a API num arquivo só em
+`dist-vercel/` (com as migrações); o `server.ts` da raiz é a entrada que a Vercel procura. Para conferir
+na própria máquina antes de publicar: `npx vercel build`.
+
+Atenção: o plano gratuito (Hobby) da Vercel é só para uso pessoal, não comercial.
 
 ### Backup
 
