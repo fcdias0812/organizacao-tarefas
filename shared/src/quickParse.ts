@@ -2,7 +2,7 @@ import type { CategoryKey, TaskPriority } from "./types"
 
 /**
  * Lê a linha da criação rápida e separa o título dos atalhos:
- *   #categoria   → #infra, #chamado, #compra, #projeto, #rotina
+ *   #categoria   → nome da categoria sem espaços (#infra, #chamado…)
  *   !prioridade  → !urgente, !alta, !media, !baixa
  *   @pessoa      → @juliana (primeiro nome, sem acento)
  *   prazo        → hoje, amanhã, depois de amanhã, segunda…domingo, 15/10, 15/10/2026
@@ -30,16 +30,6 @@ const normalize = (s: string) =>
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
-
-const CATEGORY_WORDS: Record<string, CategoryKey> = {
-  chamado: "ticket",
-  infra: "infra",
-  infraestrutura: "infra",
-  compra: "purchase",
-  compras: "purchase",
-  projeto: "project",
-  rotina: "routine",
-}
 
 const PRIORITY_WORDS: Record<string, TaskPriority> = {
   urgente: "urgent",
@@ -111,7 +101,16 @@ function readDate(words: string[], i: number, today: Date): { date: string; used
   return undefined
 }
 
-export function parseQuickTask(input: string, options: { users: QuickParseUser[]; today?: Date }): QuickParseResult {
+export interface QuickParseOptions {
+  users: QuickParseUser[]
+  /** Categorias ativas: casam pelo nome (sem espaços) ou pela chave. */
+  categories?: { key: CategoryKey; name: string }[]
+  /** Nomes personalizados das prioridades (os nomes padrão continuam valendo). */
+  priorityLabels?: Partial<Record<TaskPriority, string>>
+  today?: Date
+}
+
+export function parseQuickTask(input: string, options: QuickParseOptions): QuickParseResult {
   const today = options.today ?? new Date()
   const words = input.trim().split(/\s+/).filter(Boolean)
   const kept: string[] = []
@@ -120,13 +119,24 @@ export function parseQuickTask(input: string, options: { users: QuickParseUser[]
   const people: Record<string, number> = {}
   for (const u of options.users) people[normalize(u.name.split(" ")[0])] = u.id
 
+  const categoryWords: Record<string, CategoryKey> = {}
+  for (const c of options.categories ?? []) {
+    categoryWords[normalize(c.key)] = c.key
+    categoryWords[normalize(c.name).replace(/\s+/g, "")] = c.key
+  }
+
+  const priorityWords: Record<string, TaskPriority> = { ...PRIORITY_WORDS }
+  for (const [priority, label] of Object.entries(options.priorityLabels ?? {}) as [TaskPriority, string][]) {
+    priorityWords[normalize(label).replace(/\s+/g, "")] = priority
+  }
+
   for (let i = 0; i < words.length; i++) {
     const word = words[i]
     const head = word[0]
     const body = normalize(word.slice(1))
 
     if (head === "#" && !result.category) {
-      const category = matchPrefix(body, CATEGORY_WORDS)
+      const category = matchPrefix(body, categoryWords)
       if (category) {
         result.category = category
         result.tokens.push(word)
@@ -134,7 +144,7 @@ export function parseQuickTask(input: string, options: { users: QuickParseUser[]
       }
     }
     if (head === "!" && !result.priority) {
-      const priority = matchPrefix(body, PRIORITY_WORDS)
+      const priority = matchPrefix(body, priorityWords)
       if (priority) {
         result.priority = priority
         result.tokens.push(word)

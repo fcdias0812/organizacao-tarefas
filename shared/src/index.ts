@@ -1,4 +1,5 @@
 export * from "./types"
+export * from "./settings"
 export * from "./rules"
 export * from "./schemas"
 export * from "./quickParse"

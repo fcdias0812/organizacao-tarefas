@@ -4,8 +4,8 @@ export type TaskStatus = (typeof TASK_STATUSES)[number]
 export const TASK_PRIORITIES = ["urgent", "high", "medium", "low"] as const
 export type TaskPriority = (typeof TASK_PRIORITIES)[number]
 
-export const CATEGORY_KEYS = ["ticket", "infra", "purchase", "project", "routine"] as const
-export type CategoryKey = (typeof CATEGORY_KEYS)[number]
+/** Chave da categoria (gerada a partir do nome na criação e nunca muda). */
+export type CategoryKey = string
 
 export const USER_ROLES = ["manager", "executor"] as const
 export type UserRole = (typeof USER_ROLES)[number]
@@ -30,14 +30,36 @@ export interface UserDTO {
   name: string
   email: string
   role: UserRole
+  /** Administrador acessa Configurações. Sempre é também gestor. */
+  isAdmin: boolean
   jobTitle: string | null
   avatarColor: AvatarColor
+}
+
+/** Usuário como o administrador vê em Configurações. */
+export interface AdminUserDTO extends UserDTO {
+  isActive: boolean
+  createdAt: string
 }
 
 export interface CategoryDTO {
   key: CategoryKey
   name: string
+  /** Nome do ícone (ver CATEGORY_ICONS). */
+  icon: string
+  isActive: boolean
+  position: number
   checklistTemplate: string[]
+  /** Quantas tarefas usam a categoria (só vem para o administrador). */
+  taskCount?: number
+}
+
+export interface CommentDTO {
+  id: number
+  authorId: number
+  body: string
+  createdAt: string
+  updatedAt: string
 }
 
 /** Dados do card no quadro. */
@@ -56,6 +78,7 @@ export interface TaskSummaryDTO {
   checklistTotal: number
   blockedReason: string | null
   lastReturnReason: string | null
+  commentCount: number
   createdAt: string
   updatedAt: string
   completedAt: string | null
@@ -86,6 +109,7 @@ export interface TaskEventDTO {
 export interface TaskDetailDTO extends TaskSummaryDTO {
   checklist: ChecklistItemDTO[]
   events: TaskEventDTO[]
+  comments: CommentDTO[]
 }
 
 export interface ApiErrorBody {

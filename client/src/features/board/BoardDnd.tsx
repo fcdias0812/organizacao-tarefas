@@ -29,7 +29,8 @@ import { BoardColumn, type DropState } from "@/components/board/BoardColumn"
 import { ReasonDialog, type ReasonKind } from "@/components/board/ReasonDialog"
 import { TaskCard } from "@/components/task/TaskCard"
 import { Button } from "@/components/ui/button"
-import { STATUS_META, STATUS_ORDER, type TaskCardData } from "@/lib/domain"
+import { useAppConfig } from "@/features/settings/appConfig"
+import { STATUS_ORDER, type TaskCardData } from "@/lib/domain"
 import { toCardData } from "./useBoardData"
 import { useMoveTask } from "./useMoveTask"
 
@@ -76,6 +77,7 @@ interface BoardDndProps {
 
 export function BoardDnd({ tasks, users, me, onOpenTask, onAddTask, visibleIds = null, highlightId = null }: BoardDndProps) {
   const [now] = useState(() => new Date())
+  const config = useAppConfig()
   const { move } = useMoveTask(me.role)
 
   const tasksById = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks])
@@ -108,10 +110,10 @@ export function BoardDnd({ tasks, users, me, onOpenTask, onAddTask, visibleIds =
           actorRole: me.role,
           checklistDone: activeTask.checklistDone,
           checklistTotal: activeTask.checklistTotal,
-        }),
+        }, config.ruleOptions),
       ])
     ) as Record<TaskStatus, ReturnType<typeof previewMove>>
-  }, [activeTask, me.role])
+  }, [activeTask, me.role, config.ruleOptions])
 
   // Teclado: setas ← → pulam para a coluna vizinha; ↑ ↓ reordenam dentro dela.
   const columnsRef = useRef(columns)
@@ -244,11 +246,11 @@ export function BoardDnd({ tasks, users, me, onOpenTask, onAddTask, visibleIds =
     onDragStart: ({ active }) => `Card "${tasksById.get(Number(active.id))?.title}" selecionado.`,
     onDragOver: ({ over }) => {
       const status = over ? findStatus(over.id, columns) : undefined
-      return status ? `Sobre a coluna ${STATUS_META[status].label}.` : undefined
+      return status ? `Sobre a coluna ${config.statusLabel(status)}.` : undefined
     },
     onDragEnd: ({ over }) => {
       const status = over ? findStatus(over.id, columns) : undefined
-      return status ? `Card solto em ${STATUS_META[status].label}.` : "Card solto."
+      return status ? `Card solto em ${config.statusLabel(status)}.` : "Card solto."
     },
     onDragCancel: () => "Movimento cancelado. O card voltou para o lugar.",
   }

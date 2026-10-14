@@ -13,11 +13,18 @@ Visão geral, comandos e regras de negócio: ver `README.md`.
 - Banco: SQL puro com `node:sqlite`. Mudança de esquema = novo arquivo em `server/src/db/migrations/NNN_nome.sql`
   (nunca editar migração já aplicada). Escritas que mexem em mais de uma tabela vão dentro de `transaction()`.
 - Datas de prazo são `AAAA-MM-DD` em horário **local** — nunca usar `toISOString()` para elas.
+- **Nada de nomes fixos na interface**: colunas, prioridades (nome e cor), categorias, nome do sistema, cor
+  principal, prazo "vence em breve" e motivo mínimo vêm de Configurações. No cliente use `useAppConfig()`
+  (`features/settings/appConfig.ts`); no servidor, `getSettings()`/`ruleOptions()`. Padrões em `shared/src/settings.ts`.
+- Categorias são dinâmicas (tabela `categories`, chave = slug imutável). Categoria com tarefas só é desativada, nunca excluída.
+- Administrador = gestor com `is_admin`. Rotas `/api/admin/*` usam `requireAdmin`. Sempre deve existir 1 admin ativo.
 - Histórico (`task_events`) só recebe inserções.
 
 ## Design
 
-- Tokens em `client/src/index.css`. Violeta (`brand-600` #7C3AED) só em ação principal, destaque e estado ativo.
+- Tokens em `client/src/index.css`. A cor principal é `--brand-600` (padrão violeta #7C3AED, configurável);
+  os outros tons (`brand-50`…`brand-900`) são derivados dela com `color-mix`. Nunca escreva o hex da cor
+  principal no código. Ela aparece só em ação principal, destaque e estado ativo.
 - Cor nos botões indica o resultado: violeta neutro, verde conclui, âmbar devolve, vermelho bloqueia/exclui, cinza indisponível.
 - Cantos arredondados (cards `rounded-xl`, painéis `rounded-3xl`, botões pill), sombras difusas, quase sem bordas.
 - `client/src/components/ui/` são componentes shadcn **remodelados**. Nunca rode `shadcn add` com `-o`:

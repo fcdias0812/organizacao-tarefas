@@ -19,3 +19,11 @@ export function requireAuth(db: Db): RequestHandler {
 export function currentUser(res: Response): UserDTO {
   return res.locals.user as UserDTO
 }
+
+/** Só o administrador entra em Configurações. Usar depois de requireAuth. */
+export const requireAdmin: RequestHandler = (_req, res, next) => {
+  if (!currentUser(res).isAdmin) {
+    return next(new HttpError(403, "forbidden", "Só o administrador acessa as configurações."))
+  }
+  next()
+}

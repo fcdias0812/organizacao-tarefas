@@ -1,7 +1,8 @@
 /**
  * Popula o banco com usuários e tarefas de exemplo.
- *   npm run seed       → só se o banco estiver vazio
- *   npm run db:reset   → APAGA usuários, tarefas e histórico e recria tudo
+ *   npm run seed       → só se os usuários de exemplo ainda não existirem
+ *   npm run db:reset   → APAGA todas as tarefas e os usuários de exemplo e recria tudo.
+ *                        Contas reais (como a do administrador) são preservadas.
  */
 import type { TaskEventType, TaskStatus } from "@tarefas/shared"
 
@@ -55,10 +56,22 @@ function historyFor(task: SeedTask): Step[] {
   return steps
 }
 
+const DEFAULT_CATEGORIES = [
+  { key: "ticket", name: "Chamado", icon: "headset" },
+  { key: "infra", name: "Infra", icon: "server" },
+  { key: "purchase", name: "Compra", icon: "shopping-cart" },
+  { key: "project", name: "Projeto", icon: "folder-kanban" },
+  { key: "routine", name: "Rotina", icon: "refresh-cw" },
+]
+
 async function seed(db: Db, reset: boolean) {
-  const { n } = db.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number }
+  const demoEmails = Object.values(SEED_USERS).map((u) => u.email)
+  const placeholders = demoEmails.map(() => "?").join(", ")
+  const { n } = db.prepare(`SELECT COUNT(*) AS n FROM users WHERE email IN (${placeholders})`).get(...demoEmails) as {
+    n: number
+  }
   if (n > 0 && !reset) {
-    console.log("O banco já tem dados. Para apagar tudo e recriar, use: npm run db:reset")
+    console.log("Os dados de exemplo já existem. Para apagar e recriar, use: npm run db:reset")
     return
   }
 
@@ -66,8 +79,15 @@ async function seed(db: Db, reset: boolean) {
 
   transaction(db, () => {
     if (reset) {
-      db.exec("DELETE FROM task_events; DELETE FROM checklist_items; DELETE FROM tasks; DELETE FROM sessions; DELETE FROM users;")
+      db.exec("DELETE FROM task_comments; DELETE FROM task_events; DELETE FROM checklist_items; DELETE FROM tasks;")
+      db.prepare(`DELETE FROM users WHERE email IN (${placeholders})`).run(...demoEmails)
     }
+
+    // As tarefas de exemplo usam as categorias originais: recria as que faltarem.
+    const insertCategory = db.prepare(
+      "INSERT INTO categories (key, name, icon, position, is_active) VALUES (?, ?, ?, ?, 1) ON CONFLICT (key) DO UPDATE SET is_active = 1"
+    )
+    DEFAULT_CATEGORIES.forEach((c, i) => insertCategory.run(c.key, c.name, c.icon, i + 1))
 
     const userIds = {} as Record<SeedUserKey, number>
     for (const [key, user] of Object.entries(SEED_USERS) as [SeedUserKey, (typeof SEED_USERS)[SeedUserKey]][]) {

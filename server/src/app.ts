@@ -6,9 +6,11 @@ import express from "express"
 import { requireAuth } from "./auth/middleware"
 import type { Db } from "./db/connection"
 import { errorHandler, notFound, requireJson } from "./http/errors"
+import { adminRoutes } from "./routes/admin"
 import { authRoutes } from "./routes/auth"
 import { taskRoutes } from "./routes/tasks"
 import { listCategories } from "./services/categories"
+import { getSettings } from "./services/settings"
 import { listUsers } from "./services/users"
 
 export interface AppOptions {
@@ -42,6 +44,10 @@ export function createApp({ db, secureCookies = false, clientDist }: AppOptions)
   api.use(requireJson)
 
   api.use("/auth", authRoutes(db, { secureCookies }))
+  // Público: o login também usa o nome e a cor do sistema.
+  api.get("/settings", (_req, res) => {
+    res.json({ settings: getSettings(db) })
+  })
 
   api.use(requireAuth(db))
   api.get("/users", (_req, res) => {
@@ -51,6 +57,7 @@ export function createApp({ db, secureCookies = false, clientDist }: AppOptions)
     res.json({ categories: listCategories(db) })
   })
   api.use("/tasks", taskRoutes(db))
+  api.use("/admin", adminRoutes(db))
   api.use((_req, _res, next) => next(notFound("Rota não encontrada.")))
 
   app.use("/api", api)

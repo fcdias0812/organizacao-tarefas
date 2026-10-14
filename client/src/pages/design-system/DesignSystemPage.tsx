@@ -17,7 +17,6 @@ import {
 import { toast } from "sonner"
 import { cn } from "cn"
 
-import { AppLogo } from "@/components/AppLogo"
 import { BoardColumn } from "@/components/board/BoardColumn"
 import { EmptyColumn } from "@/components/empty-states/EmptyColumn"
 import { StatusIcon } from "@/components/task/StatusIcon"
@@ -53,13 +52,8 @@ import { Sheet, SheetTrigger } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { addDays, toDateOnly } from "@/lib/dates"
-import {
-  CATEGORY_ORDER,
-  PRIORITY_META,
-  PRIORITY_ORDER,
-  STATUS_META,
-  STATUS_ORDER,
-} from "@/lib/domain"
+import { useAppConfig } from "@/features/settings/appConfig"
+import { PRIORITY_ORDER, STATUS_ORDER } from "@/lib/domain"
 import { sampleTasks, users } from "./sampleData"
 import { TaskDrawerPreview } from "./TaskDrawerPreview"
 
@@ -76,53 +70,21 @@ const SECTIONS = [
   { id: "rapida", label: "Criação rápida e filtros" },
 ]
 
+/** Guia visual do sistema, exibido em Configurações → Design system. */
 export function DesignSystemPage() {
   return (
-    <div className="min-h-dvh bg-canvas">
-      <header className="sticky top-0 z-40 bg-canvas/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-[1280px] items-center gap-4 px-4 sm:px-6">
-          <AppLogo />
-          <span className="hidden h-5 w-px bg-hairline sm:block" />
-          <span className="hidden text-sm font-medium text-ink-2 sm:inline">Design system</span>
-          <Badge variant="brand" className="ml-auto">
-            Fase 1 · para aprovação
-          </Badge>
-        </div>
-      </header>
-
-      <div className="mx-auto flex max-w-[1280px] gap-12 px-4 pb-32 sm:px-6">
-        <nav className="sticky top-24 hidden h-fit w-48 shrink-0 lg:block" aria-label="Seções">
-          <ul className="space-y-0.5">
-            {SECTIONS.map((s, i) => (
-              <li key={s.id}>
-                <a
-                  href={`#${s.id}`}
-                  className="flex items-center gap-3 rounded-full px-3 py-1.5 text-[13px] text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink"
-                >
-                  <span className="w-4 text-[11px] font-semibold text-ink-4 tabular-nums">
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  {s.label}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
-
-        <main className="min-w-0 flex-1 space-y-20 pt-8">
-          <Intro />
-          <ColorsSection />
-          <TypographySection />
-          <ShapeSection />
-          <ButtonsSection />
-          <FieldsSection />
-          <BadgesSection />
-          <CardSection />
-          <ColumnsSection />
-          <OverlaysSection />
-          <QuickCreateSection />
-        </main>
-      </div>
+    <div className="space-y-20">
+      <Intro />
+      <ColorsSection />
+      <TypographySection />
+      <ShapeSection />
+      <ButtonsSection />
+      <FieldsSection />
+      <BadgesSection />
+      <CardSection />
+      <ColumnsSection />
+      <OverlaysSection />
+      <QuickCreateSection />
     </div>
   )
 }
@@ -414,6 +376,7 @@ function ButtonsSection() {
 
 function FieldsSection() {
   const [checked, setChecked] = useState(true)
+  const { activeCategories } = useAppConfig()
   return (
     <Section id="campos" title="Campos" description="Fundo cinza bem leve no repouso; ao focar, vira branco com um halo violeta suave.">
       <Panel className="grid gap-6 sm:grid-cols-2">
@@ -428,7 +391,7 @@ function FieldsSection() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent position="popper">
-              {CATEGORY_ORDER.map((c) => (
+              {activeCategories.map(({ key: c }) => (
                 <SelectItem key={c} value={c}>
                   <CategoryLabel category={c} className="text-sm text-ink" />
                 </SelectItem>
@@ -462,6 +425,7 @@ function FieldsSection() {
 
 function BadgesSection() {
   const [now] = useState(() => new Date())
+  const { statusLabel, activeCategories } = useAppConfig()
   const d = (n: number) => toDateOnly(addDays(now, n))
   return (
     <Section id="selos" title="Selos e metadados" description="Informação secundária fica em cinza; cor só quando exige atenção.">
@@ -471,7 +435,7 @@ function BadgesSection() {
           <div className="flex flex-wrap gap-x-5 gap-y-3">
             {STATUS_ORDER.map((s) => (
               <span key={s} className="inline-flex items-center gap-2 text-[13px] font-medium text-ink">
-                <StatusIcon status={s} /> {STATUS_META[s].label}
+                <StatusIcon status={s} /> {statusLabel(s)}
               </span>
             ))}
           </div>
@@ -479,7 +443,7 @@ function BadgesSection() {
         <div className="space-y-3">
           <Caption>Categorias</Caption>
           <div className="flex flex-wrap gap-2">
-            {CATEGORY_ORDER.map((c) => (
+            {activeCategories.map(({ key: c }) => (
               <CategoryChip key={c} category={c} />
             ))}
           </div>
@@ -718,6 +682,7 @@ function OverlaysSection() {
 
 function QuickCreateSection() {
   const [active, setActive] = useState(true)
+  const { priority } = useAppConfig()
   return (
     <Section
       id="rapida"
@@ -739,7 +704,7 @@ function QuickCreateSection() {
               onClick={() => setActive(false)}
               className="inline-flex h-9 items-center gap-2 rounded-full bg-brand-50 pr-2.5 pl-3.5 text-[13px] font-medium text-brand-700 transition-colors hover:bg-brand-100"
             >
-              <span className={cn("size-2 rounded-full", PRIORITY_META.urgent.dotClass)} />
+              <span className="size-2 rounded-full" style={{ backgroundColor: priority("urgent").color }} />
               Prioridade: Urgente
               <X className="size-3.5" />
             </button>

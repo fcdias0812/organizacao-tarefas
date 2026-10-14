@@ -11,6 +11,7 @@ import { FilterBar } from "@/features/board/FilterBar"
 import { useBoard } from "@/features/board/useBoardData"
 import { filterTasks, useBoardFilters } from "@/features/board/useBoardFilters"
 import { QuickCreate } from "@/features/task/QuickCreate"
+import { useAppConfig } from "@/features/settings/appConfig"
 import { getDueState } from "@/lib/dates"
 import { STATUS_ORDER, type TaskStatus } from "@/lib/domain"
 
@@ -123,7 +124,8 @@ export function BoardPage() {
           onOpenChange={setQuickOpen}
           me={me}
           users={board.users}
-          onCreated={(task) => {
+          onCreated={(task, { open }) => {
+            if (open) openTask(task.id)
             setHighlightId(task.id)
             window.clearTimeout(highlightTimer.current)
             highlightTimer.current = window.setTimeout(() => setHighlightId(null), 2500)
@@ -141,8 +143,9 @@ export function BoardPage() {
 }
 
 function Highlights({ board, isManager }: { board: ReturnType<typeof useBoard>; isManager: boolean }) {
+  const { soonDays } = useAppConfig().settings
   const open = board.tasks.filter((t) => t.status !== "done")
-  const overdue = open.filter((t) => t.dueDate && getDueState(t.dueDate) === "overdue").length
+  const overdue = open.filter((t) => t.dueDate && getDueState(t.dueDate, undefined, soonDays) === "overdue").length
   const inReview = board.columns.review.length
 
   return (

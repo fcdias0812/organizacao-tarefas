@@ -5,7 +5,8 @@ import { cn } from "cn"
 import { StatusIcon } from "@/components/task/StatusIcon"
 import { TaskCard } from "@/components/task/TaskCard"
 import { addDays, toDateOnly } from "@/lib/dates"
-import { STATUS_META, type TaskCardData, type TaskStatus, type User } from "@/lib/domain"
+import { useAppConfig } from "@/features/settings/appConfig"
+import type { TaskCardData, TaskStatus, User } from "@/lib/domain"
 
 const rafael: User = { id: 2, name: "Rafael Lima", role: "manager", avatarColor: "teal" }
 const juliana: User = { id: 3, name: "Juliana Souza", role: "executor", avatarColor: "amber" }
@@ -51,6 +52,7 @@ const FEATURES = [
 /** Lado direito do login: uma prévia do quadro que cresce com a tela. */
 export function LoginShowcase() {
   const [today] = useState(() => new Date())
+  const config = useAppConfig()
   const columns = buildColumns(today)
 
   return (
@@ -62,7 +64,7 @@ export function LoginShowcase() {
       <div className="pointer-events-none absolute -bottom-48 -left-24 size-[32rem] rounded-full bg-brand-700 blur-3xl" />
 
       <div className="relative max-w-xl space-y-3 2xl:max-w-2xl">
-        <p className="text-sm font-medium text-brand-200">Tarefas TI</p>
+        <p className="text-sm font-medium text-brand-200">{config.settings.appName}</p>
         <p className="text-3xl leading-tight font-semibold tracking-tight text-white 2xl:text-[2.75rem]">
           Nada esquecido. Ninguém sem saber quem faz o quê.
         </p>
@@ -86,7 +88,7 @@ export function LoginShowcase() {
                 <span className="grid size-5 place-items-center rounded-full bg-white">
                   <StatusIcon status={col.status} className="size-3.5" />
                 </span>
-                <span className="text-[13px] font-semibold text-white">{STATUS_META[col.status].label}</span>
+                <span className="text-[13px] font-semibold text-white">{config.statusLabel(col.status)}</span>
                 <span className="rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-semibold text-white/90 tabular-nums">
                   {col.cards.length}
                 </span>

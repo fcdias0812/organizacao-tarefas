@@ -8,9 +8,17 @@ const users = [
   { id: 2, name: "Rafael Lima" },
   { id: 3, name: "Juliana Souza" },
 ]
+const categories = [
+  { key: "ticket", name: "Chamado" },
+  { key: "infra", name: "Infra" },
+  { key: "purchase", name: "Compra" },
+  { key: "project", name: "Projeto" },
+  { key: "routine", name: "Rotina" },
+  { key: "telefonia-ip", name: "Telefonia IP" },
+]
 // Terça-feira, 13/10/2026
 const today = new Date(2026, 9, 13)
-const parse = (s: string) => parseQuickTask(s, { users, today })
+const parse = (s: string) => parseQuickTask(s, { users, categories, today })
 
 describe("parseQuickTask", () => {
   it("separa título e atalhos", () => {
@@ -63,5 +71,19 @@ describe("parseQuickTask", () => {
     const r = parse("x #infra #compra")
     assert.equal(r.category, "infra")
     assert.equal(r.title, "x #compra")
+  })
+})
+
+describe("categorias e prioridades personalizadas", () => {
+  it("casa categoria nova pelo nome sem espaços ou pela chave", () => {
+    assert.equal(parse("Ramal mudo #telefoniaip").category, "telefonia-ip")
+    assert.equal(parse("Ramal mudo #telefonia-ip").category, "telefonia-ip")
+    assert.equal(parse("Ramal mudo #tel").category, "telefonia-ip")
+  })
+
+  it("aceita o nome personalizado da prioridade e mantém os padrões", () => {
+    const opts = { users, categories, today, priorityLabels: { urgent: "Crítica" } }
+    assert.equal(parseQuickTask("x !critica", opts).priority, "urgent")
+    assert.equal(parseQuickTask("x !urgente", opts).priority, "urgent")
   })
 })

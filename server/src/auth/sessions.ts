@@ -26,7 +26,7 @@ export async function verifyCredentials(db: Db, email: string, password: string)
 }
 
 // O token vai só no cookie; no banco fica apenas o hash dele.
-const hashToken = (token: string) => createHash("sha256").update(token).digest("hex")
+export const hashToken = (token: string) => createHash("sha256").update(token).digest("hex")
 
 export function createSession(db: Db, userId: number): string {
   const token = randomBytes(32).toString("base64url")

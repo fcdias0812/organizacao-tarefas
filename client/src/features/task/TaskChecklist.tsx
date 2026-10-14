@@ -6,13 +6,15 @@ import { cn } from "cn"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Progress } from "@/components/ui/progress"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useAppConfig } from "@/features/settings/appConfig"
 import { useChecklist } from "./useTaskDetail"
 
 export function TaskChecklist({ task, me }: { task: TaskDetailDTO; me: UserDTO }) {
   const { toggle, add, remove } = useChecklist(task.id, me.id)
   const [draft, setDraft] = useState("")
 
-  const editable = checkChecklistEditable(task.status)
+  const { ruleOptions } = useAppConfig()
+  const editable = checkChecklistEditable(task.status, ruleOptions)
   const done = task.checklistDone
   const total = task.checklistTotal
   const pct = total > 0 ? Math.round((done / total) * 100) : 0

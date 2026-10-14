@@ -11,7 +11,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Kbd } from "@/components/ui/kbd"
-import { CATEGORY_META, CATEGORY_ORDER, PRIORITY_META, PRIORITY_ORDER } from "@/lib/domain"
+import { useAppConfig } from "@/features/settings/appConfig"
+import { PRIORITY_ORDER } from "@/lib/domain"
 import type { AssigneeFilter, useBoardFilters } from "./useBoardFilters"
 
 type FiltersApi = ReturnType<typeof useBoardFilters>
@@ -30,6 +31,7 @@ interface FilterBarProps {
 
 export function FilterBar({ api, users, me, visibleCount, searchRef }: FilterBarProps) {
   const { filters } = api
+  const config = useAppConfig()
   const userName = (id: AssigneeFilter) =>
     id === "none" ? "Sem responsável" : id === me.id ? "Eu" : (users.find((u) => u.id === id)?.name.split(" ")[0] ?? "?")
 
@@ -101,11 +103,11 @@ export function FilterBar({ api, users, me, visibleCount, searchRef }: FilterBar
 
       <FilterMenu
         label="Categoria"
-        selectedLabel={filters.categories.length === 1 ? CATEGORY_META[filters.categories[0]].label : undefined}
+        selectedLabel={filters.categories.length === 1 ? config.category(filters.categories[0]).label : undefined}
         count={filters.categories.length}
         onClear={() => api.setCategories([])}
       >
-        {CATEGORY_ORDER.map((c) => (
+        {config.activeCategories.map(({ key: c }) => (
           <DropdownMenuCheckboxItem
             key={c}
             checked={filters.categories.includes(c)}
@@ -119,7 +121,7 @@ export function FilterBar({ api, users, me, visibleCount, searchRef }: FilterBar
 
       <FilterMenu
         label="Prioridade"
-        selectedLabel={filters.priorities.length === 1 ? PRIORITY_META[filters.priorities[0]].label : undefined}
+        selectedLabel={filters.priorities.length === 1 ? config.priority(filters.priorities[0]).label : undefined}
         count={filters.priorities.length}
         onClear={() => api.setPriorities([])}
       >

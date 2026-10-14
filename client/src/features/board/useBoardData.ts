@@ -34,6 +34,7 @@ export function toCardData(task: TaskSummaryDTO, usersById: Map<number, UserDTO>
     checklistTotal: task.checklistTotal,
     blockedReason: task.blockedReason,
     lastReturnReason: task.lastReturnReason,
+    commentCount: task.commentCount,
   }
 }
 

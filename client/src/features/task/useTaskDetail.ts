@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import type { ChecklistItemDTO, TaskDetailDTO, TaskSummaryDTO, UpdateTaskInput } from "@tarefas/shared"
+import type { ChecklistItemDTO, CommentDTO, TaskDetailDTO, TaskSummaryDTO, UpdateTaskInput } from "@tarefas/shared"
 
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/queryClient"
@@ -13,7 +13,7 @@ export function useTaskDetail(id: number | null) {
   })
 }
 
-function toSummary({ checklist: _c, events: _e, ...summary }: TaskDetailDTO): TaskSummaryDTO {
+function toSummary({ checklist: _c, events: _e, comments: _m, ...summary }: TaskDetailDTO): TaskSummaryDTO {
   return summary
 }
 
@@ -104,4 +104,53 @@ export function useChecklist(taskId: number, actorId: number) {
   })
 
   return { toggle, add, remove }
+}
+
+const withComments = (task: TaskDetailDTO, comments: CommentDTO[]): TaskDetailDTO => ({
+  ...task,
+  comments,
+  commentCount: comments.length,
+})
+
+export function useComments(taskId: number) {
+  const queryClient = useQueryClient()
+  const path = `/tasks/${taskId}/comments`
+
+  const add = useMutation({
+    mutationFn: (body: string) => api<{ comment: CommentDTO }>("POST", path, { body }),
+    onSuccess: ({ comment }) => {
+      patchLocal(queryClient, taskId, (task) => withComments(task, [...task.comments, comment]))
+    },
+    onError: (error) => toast.error(error.message),
+  })
+
+  const edit = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: string }) => api<{ comment: CommentDTO }>("PATCH", `${path}/${id}`, { body }),
+    onSuccess: ({ comment }) => {
+      patchLocal(queryClient, taskId, (task) =>
+        withComments(
+          task,
+          task.comments.map((c) => (c.id === comment.id ? comment : c))
+        )
+      )
+    },
+    onError: (error) => toast.error(error.message),
+  })
+
+  const remove = useMutation({
+    mutationFn: (id: number) => api<void>("DELETE", `${path}/${id}`),
+    onMutate: (id) =>
+      patchLocal(queryClient, taskId, (task) =>
+        withComments(
+          task,
+          task.comments.filter((c) => c.id !== id)
+        )
+      ),
+    onError: (error, _id, undo) => {
+      undo?.()
+      toast.error(error.message)
+    },
+  })
+
+  return { add, edit, remove }
 }

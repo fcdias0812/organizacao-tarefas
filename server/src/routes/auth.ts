@@ -1,9 +1,17 @@
 import { Router, type CookieOptions } from "express"
-import { loginSchema } from "@tarefas/shared"
+import { changePasswordSchema, loginSchema } from "@tarefas/shared"
 
 import { currentUser, requireAuth } from "../auth/middleware"
 import { createLoginLimiter } from "../auth/loginLimiter"
-import { createSession, deleteSession, SESSION_COOKIE, SESSION_TTL_MS, verifyCredentials } from "../auth/sessions"
+import {
+  createSession,
+  deleteSession,
+  hashPassword,
+  hashToken,
+  SESSION_COOKIE,
+  SESSION_TTL_MS,
+  verifyCredentials,
+} from "../auth/sessions"
 import type { Db } from "../db/connection"
 import { HttpError, parseBody } from "../http/errors"
 import { toUserDTO } from "../services/users"
@@ -48,6 +56,20 @@ export function authRoutes(db: Db, options: { secureCookies: boolean }) {
 
   router.get("/me", requireAuth(db), (_req, res) => {
     res.json({ user: currentUser(res) })
+  })
+
+  /** Troca a própria senha; as outras sessões da pessoa são encerradas. */
+  router.post("/password", requireAuth(db), async (req, res) => {
+    const me = currentUser(res)
+    const { currentPassword, newPassword } = parseBody(changePasswordSchema, req.body)
+    if (!(await verifyCredentials(db, me.email, currentPassword))) {
+      throw new HttpError(422, "invalid_credentials", "A senha atual não confere.")
+    }
+    const passwordHash = await hashPassword(newPassword)
+    db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(passwordHash, me.id)
+    const token = req.cookies?.[SESSION_COOKIE]
+    db.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?").run(me.id, hashToken(String(token)))
+    res.status(204).end()
   })
 
   return router

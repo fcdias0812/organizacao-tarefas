@@ -6,6 +6,9 @@ export const queryKeys = {
   me: ["me"] as const,
   users: ["users"] as const,
   categories: ["categories"] as const,
+  settings: ["settings"] as const,
+  adminUsers: ["admin", "users"] as const,
+  adminCategories: ["admin", "categories"] as const,
   tasks: ["tasks"] as const,
   task: (id: number) => ["task", id] as const,
 }

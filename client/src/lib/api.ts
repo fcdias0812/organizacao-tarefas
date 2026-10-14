@@ -11,7 +11,7 @@ export class ApiError extends Error {
   }
 }
 
-type Method = "GET" | "POST" | "PATCH" | "DELETE"
+type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
 
 /** Chamada à API. Erros do servidor viram ApiError com a mensagem em português. */
 export async function api<T>(method: Method, path: string, body?: unknown): Promise<T> {

@@ -4,6 +4,7 @@ import { cn } from "cn"
 
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { useAppConfig } from "@/features/settings/appConfig"
 import { addDays, formatDueLabel, getDueState, parseDateOnly, toDateOnly } from "@/lib/dates"
 
 const longFormat = new Intl.DateTimeFormat("pt-BR", { weekday: "short", day: "numeric", month: "short" })
@@ -19,7 +20,8 @@ interface DueDatePickerProps {
 export function DueDatePicker({ value, onChange, muted, className }: DueDatePickerProps) {
   const [open, setOpen] = useState(false)
   const [today] = useState(() => new Date())
-  const state = value && !muted ? getDueState(value, today) : "normal"
+  const { soonDays } = useAppConfig().settings
+  const state = value && !muted ? getDueState(value, today, soonDays) : "normal"
 
   const pick = (next: string | null) => {
     onChange(next)

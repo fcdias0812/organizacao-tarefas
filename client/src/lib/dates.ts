@@ -1,7 +1,6 @@
 export type DueState = "overdue" | "soon" | "normal"
 
 const DAY_MS = 24 * 60 * 60 * 1000
-const SOON_THRESHOLD_DAYS = 2
 
 /** Converte "AAAA-MM-DD" em Date local (meia-noite), sem deslocamento de fuso. */
 export function parseDateOnly(value: string): Date {
@@ -31,10 +30,11 @@ export function daysUntil(dueDate: string, now = new Date()): number {
   return Math.round((parseDateOnly(dueDate).getTime() - startOfDay(now).getTime()) / DAY_MS)
 }
 
-export function getDueState(dueDate: string, now = new Date()): DueState {
+/** `soonDays`: quantos dias antes do prazo o card fica âmbar (configurável). */
+export function getDueState(dueDate: string, now = new Date(), soonDays = 2): DueState {
   const days = daysUntil(dueDate, now)
   if (days < 0) return "overdue"
-  if (days <= SOON_THRESHOLD_DAYS) return "soon"
+  if (days <= soonDays) return "soon"
   return "normal"
 }
 

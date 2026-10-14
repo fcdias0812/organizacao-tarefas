@@ -153,7 +153,7 @@ describe("fluxo de qualidade", () => {
     const res = await move(analista, task.id, { status: "review" })
     assert.equal(res.status, 409)
     assert.equal(res.body.error.code, "checklist_incomplete")
-    assert.equal(res.body.error.message, "Faltam 3 itens do checklist para enviar à Revisão.")
+    assert.equal(res.body.error.message, "Faltam 3 itens do checklist para enviar para Revisão.")
   })
 
   it("Revisão → Concluído só pelo gestor, com histórico completo", async () => {

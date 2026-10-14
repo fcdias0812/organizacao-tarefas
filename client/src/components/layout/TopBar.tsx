@@ -1,4 +1,5 @@
-import { ChevronDown, LogOut, Palette } from "lucide-react"
+import { useState } from "react"
+import { ChevronDown, KeyRound, LogOut, Settings } from "lucide-react"
 import { Link, useNavigate } from "react-router"
 import type { UserDTO } from "@tarefas/shared"
 
@@ -12,12 +13,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useLogout, useMe } from "@/features/auth/useAuth"
-import { ROLE_LABEL } from "@/lib/domain"
+import { profileLabel } from "@/lib/domain"
+import { ChangePasswordDialog } from "./ChangePasswordDialog"
 
 export function TopBar({ team }: { team: UserDTO[] }) {
   const { data: me } = useMe()
   const logout = useLogout()
   const navigate = useNavigate()
+  const [passwordOpen, setPasswordOpen] = useState(false)
 
   if (!me) return null
 
@@ -49,22 +52,28 @@ export function TopBar({ team }: { team: UserDTO[] }) {
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-ink">{me.name}</p>
                 <p className="truncate text-xs text-ink-3">
-                  {me.jobTitle ?? ROLE_LABEL[me.role]} · {ROLE_LABEL[me.role]}
+                  {me.jobTitle ? `${me.jobTitle} · ` : ""}
+                  {profileLabel(me)}
                 </p>
               </div>
             </div>
             <DropdownMenuSeparator />
-            {import.meta.env.DEV && (
-              <DropdownMenuItem onSelect={() => navigate("/design-system")}>
-                <Palette /> Design system
+            {me.isAdmin && (
+              <DropdownMenuItem onSelect={() => navigate("/configuracoes")}>
+                <Settings /> Configurações
               </DropdownMenuItem>
             )}
+            <DropdownMenuItem onSelect={() => setPasswordOpen(true)}>
+              <KeyRound /> Alterar senha
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => logout.mutate(undefined, { onSettled: () => navigate("/login") })}>
               <LogOut /> Sair
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
     </header>
   )
 }

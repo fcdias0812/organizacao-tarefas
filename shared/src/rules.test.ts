@@ -29,7 +29,7 @@ describe("checkMove", () => {
       const r = move({ from: "in_progress", to: "review", checklistDone: 2, checklistTotal: 4 })
       assert.equal(r.ok, false)
       assert.equal(!r.ok && r.code, "checklist_incomplete")
-      assert.match(!r.ok ? r.message : "", /Faltam 2 itens/)
+      assert.match(!r.ok ? r.message : "", /Faltam 2 itens do checklist para enviar para Revisão/)
     })
 
     it("usa singular quando falta 1", () => {
@@ -167,5 +167,28 @@ describe("positionBetween", () => {
 
   it("avisa quando não há espaço entre os vizinhos", () => {
     assert.equal(positionBetween([1, 1 + 1e-9], 1), null)
+  })
+})
+
+describe("opções configuráveis", () => {
+  const options = {
+    statusLabels: { todo: "Fila", in_progress: "Fazendo", review: "Conferência", done: "Pronto", blocked: "Parado" },
+    reasonMinLength: 10,
+  }
+
+  it("mensagens usam os nomes de colunas configurados", () => {
+    const r = checkMove({ ...base, from: "in_progress", to: "review", checklistDone: 1 }, options)
+    assert.match(!r.ok ? r.message : "", /para enviar para Conferência/)
+    const e = checkMove({ ...base, from: "review", to: "done" }, options)
+    assert.equal(!e.ok && e.message, "Só o gestor tira um card de Conferência.")
+  })
+
+  it("respeita o tamanho mínimo do motivo", () => {
+    const curto = checkMove({ ...base, from: "in_progress", to: "blocked", reason: "aguardando" }, options)
+    assert.equal(curto.ok, true, "10 caracteres passam")
+    const muitoCurto = checkMove({ ...base, from: "in_progress", to: "blocked", reason: "aguardo" }, options)
+    assert.equal(!muitoCurto.ok && muitoCurto.code, "reason_required")
+    const preview = previewMove({ ...base, from: "in_progress", to: "blocked" }, options)
+    assert.equal(preview.ok && preview.needsReason, true)
   })
 })

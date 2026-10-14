@@ -24,6 +24,8 @@ import {
 import { transaction, type Db } from "../db/connection"
 import { assertRule, HttpError, notFound } from "../http/errors"
 import { getCategoryId, getTemplate } from "./categories"
+import { listComments } from "./comments"
+import { ruleOptions } from "./settings"
 import { findUserById } from "./users"
 
 /* ───────────────────────── leitura ───────────────────────── */
@@ -48,12 +50,14 @@ interface TaskRow {
   completed_at: string | null
   checklist_done: number
   checklist_total: number
+  comment_count: number
 }
 
 const TASK_SELECT = `
   SELECT t.*, c.key AS category_key,
     (SELECT COUNT(*) FROM checklist_items i WHERE i.task_id = t.id) AS checklist_total,
-    (SELECT COUNT(*) FROM checklist_items i WHERE i.task_id = t.id AND i.is_done = 1) AS checklist_done
+    (SELECT COUNT(*) FROM checklist_items i WHERE i.task_id = t.id AND i.is_done = 1) AS checklist_done,
+    (SELECT COUNT(*) FROM task_comments m WHERE m.task_id = t.id) AS comment_count
   FROM tasks t
   JOIN categories c ON c.id = t.category_id`
 
@@ -73,6 +77,7 @@ function toSummary(row: TaskRow): TaskSummaryDTO {
     checklistTotal: row.checklist_total,
     blockedReason: row.blocked_reason,
     lastReturnReason: row.last_return_reason,
+    commentCount: row.comment_count,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     completedAt: row.completed_at,
@@ -150,6 +155,7 @@ export function getTaskDetail(db: Db, id: number): TaskDetailDTO {
     ...toSummary(row),
     checklist: checklist.map(toChecklistItem),
     events: events.map(toEvent),
+    comments: listComments(db, id),
   }
 }
 
@@ -227,7 +233,7 @@ export function createTask(db: Db, actor: Actor, input: CreateTaskInput): TaskDe
   ensureAssignable(db, actor, assigneeId)
 
   const id = transaction(db, () => {
-    const categoryId = getCategoryId(db, input.category)
+    const categoryId = getCategoryId(db, input.category, { mustBeActive: true })
     const timestamp = now()
     const result = db
       .prepare(
@@ -280,9 +286,9 @@ export function updateTask(db: Db, actor: Actor, id: number, patch: UpdateTaskIn
     }
 
     if (patch.category !== undefined && patch.category !== row.category_key) {
-      assertRule(checkChecklistEditable(row.status))
+      assertRule(checkChecklistEditable(row.status, ruleOptions(db)))
       // Troca os itens do padrão antigo pelos do novo; itens avulsos ficam.
-      const categoryId = getCategoryId(db, patch.category)
+      const categoryId = getCategoryId(db, patch.category, { mustBeActive: true })
       db.prepare("DELETE FROM checklist_items WHERE task_id = ? AND is_from_template = 1").run(id)
       const templateSize = getTemplate(db, categoryId).length
       db.prepare("UPDATE checklist_items SET position = position + ? WHERE task_id = ?").run(templateSize, id)
@@ -316,14 +322,17 @@ export function moveTask(db: Db, actor: Actor, id: number, input: MoveTaskInput)
   const row = getTaskRow(db, id)
   const reason = input.reason?.trim() || null
 
-  const result = checkMove({
-    from: row.status,
-    to: input.status,
-    actorRole: actor.role,
-    checklistDone: row.checklist_done,
-    checklistTotal: row.checklist_total,
-    reason,
-  })
+  const result = checkMove(
+    {
+      from: row.status,
+      to: input.status,
+      actorRole: actor.role,
+      checklistDone: row.checklist_done,
+      checklistTotal: row.checklist_total,
+      reason,
+    },
+    ruleOptions(db)
+  )
   assertRule(result)
 
   transaction(db, () => {
@@ -395,7 +404,7 @@ const touchTask = (db: Db, taskId: number) =>
 
 export function addChecklistItem(db: Db, taskId: number, input: CreateChecklistItemInput): ChecklistItemDTO {
   const task = getTaskRow(db, taskId)
-  assertRule(checkChecklistEditable(task.status))
+  assertRule(checkChecklistEditable(task.status, ruleOptions(db)))
 
   const itemId = transaction(db, () => {
     const { next } = db
@@ -418,7 +427,7 @@ export function updateChecklistItem(
   patch: UpdateChecklistItemInput
 ): ChecklistItemDTO {
   const task = getTaskRow(db, taskId)
-  assertRule(checkChecklistEditable(task.status))
+  assertRule(checkChecklistEditable(task.status, ruleOptions(db)))
   const item = getChecklistRow(db, taskId, itemId)
 
   transaction(db, () => {
@@ -442,7 +451,7 @@ export function updateChecklistItem(
 
 export function removeChecklistItem(db: Db, actor: Actor, taskId: number, itemId: number) {
   const task = getTaskRow(db, taskId)
-  assertRule(checkChecklistEditable(task.status))
+  assertRule(checkChecklistEditable(task.status, ruleOptions(db)))
   const item = getChecklistRow(db, taskId, itemId)
   assertRule(checkChecklistItemRemoval(actor.role, item.is_from_template === 1))
 

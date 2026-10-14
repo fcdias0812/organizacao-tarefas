@@ -1,6 +1,12 @@
 import { cn } from "cn"
 
+import { useAppConfig } from "@/features/settings/appConfig"
+
 export function AppLogo({ className, showName = true }: { className?: string; showName?: boolean }) {
+  const words = useAppConfig().settings.appName.trim().split(/\s+/)
+  // Com mais de uma palavra, a última fica em cinza (ex.: "Tarefas TI").
+  const head = words.length > 1 ? words.slice(0, -1).join(" ") : words[0]
+  const tail = words.length > 1 ? words.at(-1) : null
   return (
     <span className={cn("inline-flex items-center gap-2.5", className)}>
       <span className="grid size-8 place-items-center rounded-[10px] bg-brand-600 shadow-brand">
@@ -11,7 +17,8 @@ export function AppLogo({ className, showName = true }: { className?: string; sh
       </span>
       {showName && (
         <span className="text-[15px] font-semibold tracking-tight whitespace-nowrap text-ink">
-          Tarefas <span className="text-ink-3">TI</span>
+          {head}
+          {tail && <span className="text-ink-3"> {tail}</span>}
         </span>
       )}
     </span>

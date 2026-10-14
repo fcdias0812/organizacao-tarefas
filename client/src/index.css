@@ -79,10 +79,11 @@
   /* Sombras difusas */
   --shadow-card: 0 1px 2px rgb(24 24 27 / 0.04), 0 2px 8px -2px rgb(24 24 27 / 0.06);
   --shadow-card-hover: 0 2px 4px rgb(24 24 27 / 0.04), 0 10px 24px -6px rgb(24 24 27 / 0.12);
-  --shadow-lift: 0 4px 8px rgb(76 29 149 / 0.06), 0 22px 44px -12px rgb(76 29 149 / 0.28);
+  --shadow-lift: 0 4px 8px color-mix(in srgb, var(--brand-900) 6%, transparent), 0 22px 44px -12px color-mix(in srgb, var(--brand-900) 28%, transparent);
   --shadow-pop: 0 4px 12px rgb(24 24 27 / 0.06), 0 16px 40px -8px rgb(24 24 27 / 0.16);
   --shadow-drawer: -24px 0 60px -12px rgb(24 24 27 / 0.18);
-  --shadow-brand: 0 1px 2px rgb(124 58 237 / 0.2), 0 6px 16px -4px rgb(124 58 237 / 0.45);
+  --shadow-brand: 0 1px 2px color-mix(in srgb, var(--brand-600) 20%, transparent), 0 6px 16px -4px color-mix(in srgb, var(--brand-600) 45%, transparent);
+  --shadow-brand-strong: 0 1px 2px color-mix(in srgb, var(--brand-600) 25%, transparent), 0 10px 22px -6px color-mix(in srgb, var(--brand-600) 55%, transparent);
 
   /* Movimento */
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
@@ -110,15 +111,9 @@
 }
 
 :root {
-  /* Brand — violeta */
-  --brand-50: #f6f3ff;
-  --brand-100: #ede8fe;
-  --brand-200: #ddd3fd;
-  --brand-300: #c4b2fb;
-  --brand-500: #8b5cf6;
+  /* Cor principal — configurável (Configurações → Identidade). As demais
+     variações são derivadas dela, então trocar --brand-600 ajusta tudo. */
   --brand-600: #7c3aed;
-  --brand-700: #6d28d9;
-  --brand-900: #3b1a78;
 
   /* Neutros levemente frios */
   --canvas: #ffffff;
@@ -162,6 +157,19 @@
   --input: var(--hairline);
   --ring: var(--brand-500);
   --radius: 0.625rem;
+}
+
+/* Tons derivados da cor principal. Também em .brand-scope, para prévias que
+   trocam --brand-600 só num trecho da tela (variáveis herdam o valor calculado). */
+:root,
+.brand-scope {
+  --brand-50: color-mix(in oklch, var(--brand-600) 6%, white);
+  --brand-100: color-mix(in oklch, var(--brand-600) 12%, white);
+  --brand-200: color-mix(in oklch, var(--brand-600) 24%, white);
+  --brand-300: color-mix(in oklch, var(--brand-600) 42%, white);
+  --brand-500: color-mix(in oklch, var(--brand-600) 82%, white);
+  --brand-700: color-mix(in oklch, var(--brand-600) 86%, black);
+  --brand-900: color-mix(in oklch, var(--brand-600) 52%, black);
 }
 
 @layer base {

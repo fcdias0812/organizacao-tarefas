@@ -1,4 +1,4 @@
-import { Ban, ListChecks, Undo2, UserRoundPlus } from "lucide-react"
+import { Ban, ListChecks, MessageSquare, Undo2, UserRoundPlus } from "lucide-react"
 import { cn } from "cn"
 
 import { CategoryLabel, DueChip, PriorityDot, UserAvatar } from "@/components/task/TaskMeta"
@@ -72,6 +72,16 @@ export function TaskCard({ task, lifted, rejected, now, actions, className, ...p
           >
             <ListChecks className="size-3.5" />
             {task.checklistDone}/{task.checklistTotal}
+          </span>
+        )}
+
+        {!!task.commentCount && (
+          <span
+            className="inline-flex items-center gap-1 text-xs font-medium text-ink-3 tabular-nums"
+            aria-label={task.commentCount === 1 ? "1 comentário" : `${task.commentCount} comentários`}
+          >
+            <MessageSquare className="size-3.5" />
+            {task.commentCount}
           </span>
         )}
 

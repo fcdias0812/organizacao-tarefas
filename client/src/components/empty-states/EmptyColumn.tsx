@@ -1,9 +1,9 @@
 import { cn } from "cn"
-import { STATUS_META, type TaskStatus } from "@/lib/domain"
+import { EMPTY_COLUMN_COPY, type TaskStatus } from "@/lib/domain"
 
 /** Estado vazio da coluna: ilustração leve + texto que orienta o próximo passo. */
 export function EmptyColumn({ status, className }: { status: TaskStatus; className?: string }) {
-  const meta = STATUS_META[status]
+  const meta = EMPTY_COLUMN_COPY[status]
   return (
     <div
       className={cn(
@@ -13,8 +13,8 @@ export function EmptyColumn({ status, className }: { status: TaskStatus; classNa
     >
       <EmptyIllustration status={status} />
       <div className="space-y-1">
-        <p className="text-sm font-semibold text-ink">{meta.emptyTitle}</p>
-        <p className="mx-auto max-w-[200px] text-xs leading-relaxed text-ink-3">{meta.emptyHint}</p>
+        <p className="text-sm font-semibold text-ink">{meta.title}</p>
+        <p className="mx-auto max-w-[200px] text-xs leading-relaxed text-ink-3">{meta.hint}</p>
       </div>
     </div>
   )
@@ -50,7 +50,7 @@ function EmptyIllustration({ status }: { status: TaskStatus }) {
       <circle cx="100" cy="52" r="2" fill="var(--brand-300)" />
       <defs>
         <filter id="empty-shadow" x="20" y="22" width="80" height="58" filterUnits="userSpaceOnUse">
-          <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor="#4c1d95" floodOpacity="0.12" />
+          <feDropShadow dx="0" dy="4" stdDeviation="4" style={{ floodColor: "var(--brand-900)" }} floodOpacity="0.12" />
         </filter>
       </defs>
     </svg>

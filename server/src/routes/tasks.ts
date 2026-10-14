@@ -1,5 +1,6 @@
 import { Router } from "express"
 import {
+  commentSchema,
   createChecklistItemSchema,
   createTaskSchema,
   moveTaskSchema,
@@ -10,6 +11,7 @@ import {
 import { currentUser } from "../auth/middleware"
 import type { Db } from "../db/connection"
 import { parseBody, parseId } from "../http/errors"
+import { addComment, deleteComment, updateComment } from "../services/comments"
 import {
   addChecklistItem,
   createTask,
@@ -66,6 +68,27 @@ export function taskRoutes(db: Db) {
 
   router.delete("/:id/checklist/:itemId", (req, res) => {
     removeChecklistItem(db, currentUser(res), parseId(req.params.id), parseId(req.params.itemId))
+    res.status(204).end()
+  })
+
+  router.post("/:id/comments", (req, res) => {
+    const comment = addComment(db, currentUser(res), parseId(req.params.id), parseBody(commentSchema, req.body).body)
+    res.status(201).json({ comment })
+  })
+
+  router.patch("/:id/comments/:commentId", (req, res) => {
+    const comment = updateComment(
+      db,
+      currentUser(res),
+      parseId(req.params.id),
+      parseId(req.params.commentId),
+      parseBody(commentSchema, req.body).body
+    )
+    res.json({ comment })
+  })
+
+  router.delete("/:id/comments/:commentId", (req, res) => {
+    deleteComment(db, currentUser(res), parseId(req.params.id), parseId(req.params.commentId))
     res.status(204).end()
   })
 

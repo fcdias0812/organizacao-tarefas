@@ -42,9 +42,10 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/
 import { Textarea } from "@/components/ui/textarea"
 import { useMoveTask } from "@/features/board/useMoveTask"
 import { formatFullDateTime, formatRelative } from "@/lib/dates"
-import { CATEGORY_META, CATEGORY_ORDER, PRIORITY_ORDER, STATUS_META } from "@/lib/domain"
+import { useAppConfig } from "@/features/settings/appConfig"
+import { PRIORITY_ORDER } from "@/lib/domain"
 import { TaskChecklist } from "./TaskChecklist"
-import { TaskHistory } from "./TaskHistory"
+import { TaskActivity } from "./TaskActivity"
 import { useTaskDetail, useUpdateTask } from "./useTaskDetail"
 
 interface TaskDrawerProps {
@@ -91,7 +92,12 @@ function DrawerBody({ task, me, users }: { task: TaskDetailDTO; me: UserDTO; use
   const save = (patch: UpdateTaskInput) => update.mutate(patch, { onSuccess: flashSaved })
   const creator = users.find((u) => u.id === task.createdById)
   const isManager = me.role === "manager"
-  const checklistEditable = checkChecklistEditable(task.status).ok
+  const config = useAppConfig()
+  const checklistEditable = checkChecklistEditable(task.status, config.ruleOptions).ok
+  // A categoria atual pode estar desativada: continua aparecendo para leitura.
+  const categoryOptions = config.activeCategories.some((c) => c.key === task.category)
+    ? config.activeCategories
+    : [...config.activeCategories, ...config.categories.filter((c) => c.key === task.category)]
 
   return (
     <>
@@ -101,7 +107,7 @@ function DrawerBody({ task, me, users }: { task: TaskDetailDTO; me: UserDTO; use
         <span className="size-1 rounded-full bg-ink-4" />
         <span className="inline-flex items-center gap-1.5 text-ink-2">
           <StatusIcon status={task.status} className="size-3.5" />
-          {STATUS_META[task.status].label}
+          {config.statusLabel(task.status)}
         </span>
         <SaveStatus pending={update.isPending} saved={saved} />
       </div>
@@ -162,9 +168,9 @@ function DrawerBody({ task, me, users }: { task: TaskDetailDTO; me: UserDTO; use
                 <SelectValue />
               </SelectTrigger>
               <SelectContent position="popper" align="start">
-                {CATEGORY_ORDER.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    <CategoryLabel category={c} className="text-sm text-ink" />
+                {categoryOptions.map((c) => (
+                  <SelectItem key={c.key} value={c.key} disabled={!c.isActive}>
+                    <CategoryLabel category={c.key} className="text-sm text-ink" />
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -184,14 +190,15 @@ function DrawerBody({ task, me, users }: { task: TaskDetailDTO; me: UserDTO; use
         <TaskChecklist task={task} me={me} />
 
         <section className="space-y-4">
-          <h3 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Histórico</h3>
-          <TaskHistory events={task.events} users={users} />
+          <h3 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Atividade</h3>
+          <TaskActivity task={task} users={users} me={me} />
         </section>
       </div>
 
       <DrawerActions
         task={task}
         isManager={isManager}
+        reviewLabel={config.statusLabel("review")}
         onMove={(status) => move({ task, status, index: 0 })}
         onAskReason={setReasonKind}
       />
@@ -210,10 +217,10 @@ function DrawerBody({ task, me, users }: { task: TaskDetailDTO; me: UserDTO; use
         {pendingCategory && (
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Trocar para {CATEGORY_META[pendingCategory].label}?</DialogTitle>
+              <DialogTitle>Trocar para {config.category(pendingCategory).label}?</DialogTitle>
               <DialogDescription>
-                Os itens do checklist padrão de {CATEGORY_META[task.category].label} serão substituídos pelos de{" "}
-                {CATEGORY_META[pendingCategory].label}. Os itens que vocês adicionaram à mão continuam.
+                Os itens do checklist padrão de {config.category(task.category).label} serão substituídos pelos de{" "}
+                {config.category(pendingCategory).label}. Os itens que vocês adicionaram à mão continuam.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter showCloseButton>
@@ -238,11 +245,13 @@ function DrawerBody({ task, me, users }: { task: TaskDetailDTO; me: UserDTO; use
 function DrawerActions({
   task,
   isManager,
+  reviewLabel,
   onMove,
   onAskReason,
 }: {
   task: TaskDetailDTO
   isManager: boolean
+  reviewLabel: string
   onMove: (status: TaskDetailDTO["status"]) => void
   onAskReason: (kind: ReasonKind) => void
 }) {
@@ -258,10 +267,10 @@ function DrawerActions({
       hint = complete
         ? "Checklist completo. Pode enviar."
         : task.checklistTotal === 0
-          ? "Adicione o checklist de pronto."
+          ? "Adicione ao menos um item no checklist."
           : missing === 1
-            ? "Falta 1 item para a Revisão."
-            : `Faltam ${missing} itens para a Revisão.`
+            ? `Falta 1 item para ${reviewLabel}.`
+            : `Faltam ${missing} itens para ${reviewLabel}.`
       buttons = (
         <>
           <Button variant="ghost" size="sm" className="text-danger hover:bg-danger-soft hover:text-danger" onClick={() => onAskReason("block")}>
@@ -273,7 +282,7 @@ function DrawerActions({
             </Button>
           )}
           <Button disabled={!complete} onClick={() => onMove("review")}>
-            <Send /> Enviar para revisão
+            <Send /> Enviar para {reviewLabel.toLowerCase()}
           </Button>
         </>
       )

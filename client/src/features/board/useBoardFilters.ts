@@ -1,7 +1,6 @@
 import { useMemo } from "react"
 import { useSearchParams } from "react-router"
 import {
-  CATEGORY_KEYS,
   TASK_PRIORITIES,
   type CategoryKey,
   type TaskPriority,
@@ -37,7 +36,7 @@ export function useBoardFilters() {
     () => ({
       query: params.get("q") ?? "",
       assignees: readList(params.get("resp")).map((v) => (v === "none" ? "none" : Number(v))),
-      categories: readList(params.get("cat")).filter((v): v is CategoryKey => CATEGORY_KEYS.includes(v as CategoryKey)),
+      categories: readList(params.get("cat")) as CategoryKey[],
       priorities: readList(params.get("pri")).filter((v): v is TaskPriority => TASK_PRIORITIES.includes(v as TaskPriority)),
     }),
     [params]

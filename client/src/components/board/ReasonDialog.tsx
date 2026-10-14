@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Ban, Undo2 } from "lucide-react"
-import { REASON_MAX_LENGTH, REASON_MIN_LENGTH } from "@tarefas/shared"
+import { REASON_MAX_LENGTH } from "@tarefas/shared"
 import { cn } from "cn"
 
 import { Button } from "@/components/ui/button"
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Kbd } from "@/components/ui/kbd"
 import { Textarea } from "@/components/ui/textarea"
+import { useAppConfig } from "@/features/settings/appConfig"
 
 export type ReasonKind = "block" | "return"
 
@@ -53,8 +54,14 @@ export function ReasonDialog({ kind, taskTitle, onConfirm, onCancel }: ReasonDia
 
 function ReasonForm({ kind, taskTitle, onConfirm }: { kind: ReasonKind; taskTitle?: string; onConfirm: (r: string) => void }) {
   const [reason, setReason] = useState("")
+  const { settings, statusLabel } = useAppConfig()
   const copy = COPY[kind]
-  const valid = reason.trim().length >= REASON_MIN_LENGTH
+  const title = kind === "return" ? `Devolver para ${statusLabel("in_progress")}` : copy.title
+  const description =
+    kind === "return"
+      ? `Explique o que falta. O motivo fica no histórico e aparece no card até ele voltar para ${statusLabel("review")}.`
+      : copy.description
+  const valid = reason.trim().length >= settings.reasonMinLength
   const submit = () => valid && onConfirm(reason.trim())
 
   return (
@@ -68,10 +75,10 @@ function ReasonForm({ kind, taskTitle, onConfirm }: { kind: ReasonKind; taskTitl
         >
           {kind === "block" ? <Ban className="size-5" /> : <Undo2 className="size-5" />}
         </span>
-        <DialogTitle>{copy.title}</DialogTitle>
+        <DialogTitle>{title}</DialogTitle>
         <DialogDescription>
           {taskTitle && <span className="mb-1 block font-medium text-ink">{taskTitle}</span>}
-          {copy.description}
+          {description}
         </DialogDescription>
       </DialogHeader>
 

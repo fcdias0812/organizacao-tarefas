@@ -18,6 +18,8 @@ npm run dev       # API em :3333 e telas em :5173 (com recarga automática)
 - Telas: http://localhost:5173 · vitrine do design system em `/design-system`
 - Usuários de exemplo: `marcos@tarefas.local` e `rafael@tarefas.local` (Gestores),
   `juliana@tarefas.local` (Executora). A senha está em `server/.env.example` (`SEED_PASSWORD`).
+- `npm run db:reset` apaga as tarefas e os usuários de exemplo, mas **preserva as contas reais**
+  (como a do administrador).
 
 ## Comandos
 
@@ -32,7 +34,7 @@ npm run dev       # API em :3333 e telas em :5173 (com recarga automática)
 | `npm run backup` | Cópia de segurança do banco em `backups/` (pode rodar com o sistema no ar) |
 | `npm run smoke` | Com a API no ar, faz login de exemplo e imprime o quadro no terminal |
 | `npm run seed` | Cria os dados de exemplo (só se o banco estiver vazio) |
-| `npm run db:reset` | **Apaga tudo** e recria os dados de exemplo — só para desenvolvimento |
+| `npm run db:reset` | **Apaga as tarefas** e recria os dados de exemplo (contas reais são mantidas) — só para desenvolvimento |
 
 ## Colocando em produção
 
@@ -43,12 +45,12 @@ npm run dev       # API em :3333 e telas em :5173 (com recarga automática)
    ```
 2. (Opcional) Copie `server/.env.example` para `server/.env` e ajuste a porta.
    Se o acesso for por HTTPS, use `COOKIE_SECURE=true`.
-3. **Não rode o seed.** O banco é criado vazio na primeira execução. Cadastre as pessoas reais:
+3. **Não rode o seed.** O banco é criado vazio na primeira execução. Crie o primeiro administrador:
    ```bash
-   npm run usuarios -- criar --nome "Nome Sobrenome" --email pessoa@empresa.com.br --perfil gestor --cargo "Gerente de TI"
-   npm run usuarios -- criar --nome "Nome Sobrenome" --email pessoa@empresa.com.br --perfil executor --cargo "Analista de TI"
+   npm run usuarios -- criar --nome "Nome Sobrenome" --email pessoa@empresa.com.br --perfil admin --cargo "Gerente de TI"
    ```
-   Cada comando mostra uma **senha temporária** uma única vez. Entregue pessoalmente.
+   O comando mostra uma **senha temporária** uma única vez. Depois disso, o administrador cadastra
+   as demais pessoas pela tela, em **Configurações → Usuários**.
 4. Suba o sistema e acesse `http://<nome-ou-ip-da-máquina>:3333`:
    ```bash
    npm start
@@ -58,16 +60,23 @@ npm run dev       # API em :3333 e telas em :5173 (com recarga automática)
 
 ### Usuários
 
+O dia a dia é pela tela, em **Configurações → Usuários** (só administrador). A linha de comando
+serve para o primeiro acesso e para emergências (ex.: o administrador esqueceu a senha):
+
 ```bash
 npm run usuarios -- listar
-npm run usuarios -- criar --nome "Ana Lima" --email ana@empresa.com.br --perfil gestor --cargo "Gerente de TI"
+npm run usuarios -- criar --nome "Ana Lima" --email ana@empresa.com.br --perfil admin --cargo "Gerente de TI"
 npm run usuarios -- senha --email ana@empresa.com.br        # gera senha nova e encerra as sessões dela
 npm run usuarios -- desativar --email ana@empresa.com.br    # bloqueia o acesso (o histórico continua)
 npm run usuarios -- ativar --email ana@empresa.com.br
 ```
 
-Perfis: **gestor** cria, atribui para qualquer pessoa e aprova (Revisão → Concluído);
-**executor** cria tarefas para si, executa e envia para revisão.
+Para definir a senha em vez de gerar, passe-a na variável de ambiente `SENHA` só para aquele comando
+(ela não fica gravada em nenhum arquivo).
+
+Perfis: **executor** cria tarefas para si, executa e envia para revisão; **gestor** também atribui
+para qualquer pessoa e aprova ou devolve na revisão; **administrador** é um gestor que também acessa
+Configurações. Cada pessoa troca a própria senha em "Alterar senha", no menu do usuário.
 
 ### Backup
 
@@ -75,15 +84,35 @@ O banco é um arquivo só: `data/tarefas.db`. `npm run backup` gera uma cópia c
 sistema rodando (padrão: pasta `backups/`; ou `npm run backup -- D:\copias`). Agende esse comando
 no Agendador de Tarefas do Windows e guarde as cópias fora da máquina.
 
+## Configurações (administrador)
+
+Menu do usuário → **Configurações**:
+
+| Aba | O que personaliza |
+|---|---|
+| Usuários | Cadastrar, editar, perfil (executor, gestor, administrador), cargo, cor do avatar, gerar nova senha, desativar |
+| Categorias | Criar, renomear, ícone, ordem, **checklist padrão de pronto** (pode ficar vazio), desativar ou excluir |
+| Colunas | Nomes das 5 colunas (as regras continuam as mesmas) |
+| Prioridades | Nome e cor de cada nível |
+| Prazos e regras | Quantos dias antes o prazo fica âmbar; tamanho mínimo do motivo de bloqueio/devolução |
+| Identidade | Nome do sistema e cor principal (os tons claros e escuros são calculados dela) |
+| Design system | Guia visual com todos os componentes |
+
+Mudanças no checklist padrão valem para tarefas novas; as existentes mantêm o checklist que têm.
+Categoria com tarefas não pode ser excluída, só desativada (some das opções, mas o histórico fica).
+
 ## Como usar
 
 - **N** abre a criação rápida. Atalhos na mesma linha: `#infra` `!alta` `@juliana` e prazos como
-  `hoje`, `amanhã`, `sexta` ou `20/10`. Enter cria; Shift+Enter cria e deixa aberto para a próxima.
+  `hoje`, `amanhã`, `sexta` ou `20/10`. **Enter cria e já abre a tarefa no painel**; Shift+Enter cria
+  e deixa o campo aberto para lançar a próxima.
 - **/** vai para a busca. Filtros por responsável, categoria e prioridade ficam na URL (dá para mandar o link).
 - **Arrastar e soltar** entre colunas. A coluna que aceita acende; a que recusa apaga e explica o motivo.
   Pelo teclado: foque um card, Espaço pega, setas movem, Espaço solta, Esc cancela.
-- **Clique (ou Enter) num card** abre o painel lateral: editar, checklist, ações e histórico.
-  A tarefa aberta fica na URL (`/?tarefa=12`).
+- **Clique (ou Enter) num card** abre o painel lateral: editar, checklist, ações e a **Atividade**
+  (movimentações e comentários de acompanhamento na mesma linha do tempo). A tarefa aberta fica na
+  URL (`/?tarefa=12`). Comentários: qualquer pessoa escreve; só o autor edita; o autor ou um
+  administrador exclui.
 
 ## Regras de qualidade
 
@@ -121,14 +150,17 @@ Chamadas prontas para testar à mão: `server/requests.http` (extensão REST Cli
 |---|---|---|
 | POST | `/auth/login` · `/auth/logout` | Entrar / sair (8 tentativas erradas bloqueiam por até 10 min) |
 | GET | `/auth/me` | Usuário logado |
+| GET | `/settings` | Configurações gerais (pública: o login usa nome e cor) |
+| POST | `/auth/password` | Trocar a própria senha |
 | GET | `/users` · `/categories` | Pessoas e categorias (com checklist padrão) |
 | GET · POST | `/tasks` | Quadro / criar tarefa |
 | GET · PATCH | `/tasks/:id` | Detalhe (checklist + histórico) / editar |
 | POST | `/tasks/:id/move` | Mudar de coluna ou posição (`status`, `index`, `reason`) |
 | POST | `/tasks/:id/checklist` | Adicionar item |
 | PATCH · DELETE | `/tasks/:id/checklist/:itemId` | Marcar, renomear ou remover item |
+| POST · PATCH · DELETE | `/tasks/:id/comments[/:commentId]` | Comentários de acompanhamento |
+| vários | `/admin/users` · `/admin/categories` · `/admin/settings` | Configurações (só administrador) |
 
 ## Fora da v1 (ideias para a v2)
 
-Tarefas recorrentes, painel de métricas, notificações, alerta de card parado, tela de administração
-de usuários (hoje é pela linha de comando), troca de senha pelo próprio usuário e exclusão de tarefas.
+Tarefas recorrentes, painel de métricas, notificações, alerta de card parado e exclusão de tarefas.

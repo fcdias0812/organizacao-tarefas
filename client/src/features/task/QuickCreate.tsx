@@ -15,6 +15,7 @@ import { cn } from "cn"
 
 import { CategoryLabel, PriorityDot, UserAvatar } from "@/components/task/TaskMeta"
 import { Kbd } from "@/components/ui/kbd"
+import { useAppConfig } from "@/features/settings/appConfig"
 import { api } from "@/lib/api"
 import { formatDueLabel } from "@/lib/dates"
 import { queryKeys } from "@/lib/queryClient"
@@ -24,7 +25,7 @@ interface QuickCreateProps {
   onOpenChange: (open: boolean) => void
   me: UserDTO
   users: UserDTO[]
-  onCreated: (task: TaskDetailDTO) => void
+  onCreated: (task: TaskDetailDTO, options: { open: boolean }) => void
 }
 
 function useCreateTask() {
@@ -71,30 +72,42 @@ function QuickCreateForm({
   me: UserDTO
   users: UserDTO[]
   onDone: () => void
-  onCreated: (task: TaskDetailDTO) => void
+  onCreated: (task: TaskDetailDTO, options: { open: boolean }) => void
 }) {
   const [text, setText] = useState("")
   const [today] = useState(() => new Date())
   const create = useCreateTask()
 
-  const parsed = useMemo(() => parseQuickTask(text, { users, today }), [text, users, today])
-  const category = parsed.category ?? "ticket"
+  const config = useAppConfig()
+  const categories = config.activeCategories
+  const priorityLabels = useMemo(
+    () => Object.fromEntries(Object.entries(config.settings.priorities).map(([k, v]) => [k, v.label])),
+    [config.settings.priorities]
+  )
+  const parsed = useMemo(
+    () => parseQuickTask(text, { users, categories, priorityLabels, today }),
+    [text, users, categories, priorityLabels, today]
+  )
+  // Sem #categoria: a primeira categoria ativa da lista (ordem definida em Configurações).
+  const defaultCategory = categories[0]?.key
+  const category = parsed.category ?? defaultCategory
   const priority = parsed.priority ?? "medium"
   const assigneeId = parsed.assigneeId ?? me.id
   const assignee = users.find((u) => u.id === assigneeId) ?? me
   const assignCheck = checkAssign(me, assigneeId)
-  const canSubmit = parsed.title.trim().length > 0 && assignCheck.ok && !create.isPending
+  const canSubmit = parsed.title.trim().length > 0 && assignCheck.ok && !!category && !create.isPending
 
   const submit = (keepOpen: boolean) => {
-    if (!canSubmit) return
+    if (!canSubmit || !category) return
     create.mutate(
       { title: parsed.title, category, priority, assigneeId, dueDate: parsed.dueDate ?? null },
       {
         onSuccess: ({ task }) => {
-          onCreated(task)
           setText("")
           toast.success("Tarefa criada", { description: task.title })
+          // Enter: fecha e já abre a tarefa no painel. Shift+Enter: continua lançando.
           if (!keepOpen) onDone()
+          onCreated(task, { open: !keepOpen })
         },
         onError: (error) => toast.error(error.message),
       }
@@ -133,9 +146,11 @@ function QuickCreateForm({
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 border-t border-hairline px-3 pt-2.5 pb-1.5">
-        <Chip active={!!parsed.category}>
-          <CategoryLabel category={category} className={parsed.category ? "text-ink-2" : "text-ink-3"} />
-        </Chip>
+        {category && (
+          <Chip active={!!parsed.category}>
+            <CategoryLabel category={category} className={parsed.category ? "text-ink-2" : "text-ink-3"} />
+          </Chip>
+        )}
         <Chip active={!!parsed.priority}>
           <PriorityDot priority={priority} showLabel className={parsed.priority ? "" : "text-ink-3"} />
         </Chip>
@@ -169,10 +184,12 @@ function QuickCreateForm({
         </p>
       ) : (
         <p className="px-4 pt-1 pb-2 text-xs text-ink-3">
-          Atalhos: <code className="text-ink-2">#infra</code> <code className="text-ink-2">!alta</code>{" "}
+          Atalhos: <code className="text-ink-2">#{(categories[1] ?? categories[0])?.name.toLowerCase().replace(/\s+/g, "") ?? "categoria"}</code>{" "}
+          <code className="text-ink-2">!{config.priority("high").label.toLowerCase()}</code>{" "}
           <code className="text-ink-2">@{me.name.split(" ")[0].toLowerCase()}</code> e prazos como{" "}
           <code className="text-ink-2">amanhã</code>, <code className="text-ink-2">sexta</code> ou{" "}
-          <code className="text-ink-2">20/10</code>. Sem atalhos: Chamado, prioridade média, para você.
+          <code className="text-ink-2">20/10</code>. Sem atalhos: {defaultCategory ? config.category(defaultCategory).label : "primeira categoria"},
+          prioridade {config.priority("medium").label.toLowerCase()}, para você.
         </p>
       )}
     </form>

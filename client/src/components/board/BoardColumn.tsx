@@ -4,7 +4,8 @@ import { cn } from "cn"
 import { EmptyColumn } from "@/components/empty-states/EmptyColumn"
 import { StatusIcon } from "@/components/task/StatusIcon"
 import { Button } from "@/components/ui/button"
-import { STATUS_META, type TaskStatus } from "@/lib/domain"
+import { useAppConfig } from "@/features/settings/appConfig"
+import type { TaskStatus } from "@/lib/domain"
 
 export type DropState = "idle" | "accept" | "deny"
 
@@ -33,12 +34,12 @@ export function BoardColumn({
   ref,
   filtered,
 }: BoardColumnProps) {
-  const meta = STATUS_META[status]
+  const label = useAppConfig().statusLabel(status)
 
   return (
     <section
       ref={ref}
-      aria-label={meta.label}
+      aria-label={label}
       className={cn(
         "flex min-h-0 w-[300px] shrink-0 flex-col rounded-3xl bg-surface-sunken/80 p-2 transition-[background-color,box-shadow,opacity] duration-200",
         dropState === "accept" && "bg-brand-50 shadow-[inset_0_0_0_2px_var(--brand-200)]",
@@ -48,7 +49,7 @@ export function BoardColumn({
     >
       <header className="flex h-10 items-center gap-2 px-2.5">
         <StatusIcon status={status} />
-        <h2 className="text-[13px] font-semibold text-ink">{meta.label}</h2>
+        <h2 className="text-[13px] font-semibold text-ink">{label}</h2>
         <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-ink-3 tabular-nums shadow-[0_0_0_1px_var(--hairline)]">
           {count}
         </span>

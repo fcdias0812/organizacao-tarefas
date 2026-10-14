@@ -31,7 +31,9 @@ export async function startTestServer() {
     ["bloqueado", "executor"],
   ] as const) {
     const email = `${key}@teste.local`
-    users[key] = { id: insertUser(db, { name: key, email, passwordHash, role, avatarColor: "violet" }), email, role }
+    // O gerente de teste também é administrador.
+    const isAdmin = key === "gerente"
+    users[key] = { id: insertUser(db, { name: key, email, passwordHash, role, isAdmin, avatarColor: "violet" }), email, role }
   }
 
   const server = createApp({ db }).listen(0)

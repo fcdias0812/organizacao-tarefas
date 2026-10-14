@@ -2,29 +2,40 @@
  * Gestão de usuários pela linha de comando (a v1 não tem tela de administração).
  *
  *   npm run usuarios -- listar
- *   npm run usuarios -- criar --nome "Ana Lima" --email ana@empresa.com.br --perfil gestor --cargo "Gerente de TI"
+ *   npm run usuarios -- criar --nome "Ana Lima" --email ana@empresa.com.br --perfil admin --cargo "Gerente de TI"
  *   npm run usuarios -- senha --email ana@empresa.com.br        (gera uma senha nova)
  *   npm run usuarios -- desativar --email ana@empresa.com.br    (bloqueia o acesso e encerra as sessões)
  *   npm run usuarios -- ativar --email ana@empresa.com.br
  *
- * Perfis: gestor (cria, atribui e aprova) ou executor (cria para si, executa e envia para revisão).
+ * Perfis: admin (gestor que também acessa Configurações), gestor (cria, atribui e aprova)
+ * ou executor (cria para si, executa e envia para revisão).
+ *
+ * Para definir a senha em vez de gerar uma, passe-a na variável de ambiente SENHA
+ * (assim ela não fica gravada em nenhum arquivo do projeto).
  */
-import { randomInt } from "node:crypto"
 import { parseArgs } from "node:util"
 import { AVATAR_COLORS, type UserRole } from "@tarefas/shared"
 
 import { hashPassword } from "../auth/sessions"
 import { config } from "../config"
 import { openDatabase } from "../db/connection"
-import { insertUser, type UserRow } from "../services/users"
+import { generatePassword, insertUser, type UserRow } from "../services/users"
 
-const ROLES: Record<string, UserRole> = { gestor: "manager", executor: "executor" }
-const ROLE_LABEL: Record<UserRole, string> = { manager: "gestor", executor: "executor" }
+const PROFILES: Record<string, { role: UserRole; isAdmin: boolean }> = {
+  admin: { role: "manager", isAdmin: true },
+  gestor: { role: "manager", isAdmin: false },
+  executor: { role: "executor", isAdmin: false },
+}
+const profileLabel = (u: UserRow) => (u.is_admin ? "admin" : u.role === "manager" ? "gestor" : "executor")
 
-/** Senha temporária legível (sem caracteres que se confundem, como 0/O e 1/l). */
-function generatePassword(length = 12) {
-  const alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-  return Array.from({ length }, () => alphabet[randomInt(alphabet.length)]).join("")
+/** Senha vinda de SENHA (ex.: definida pela própria pessoa) ou gerada. */
+function chosenPassword(): { password: string; generated: boolean } {
+  const fromEnv = process.env.SENHA
+  if (fromEnv) {
+    if (fromEnv.length < 8) fail("A senha em SENHA precisa de pelo menos 8 caracteres.")
+    return { password: fromEnv, generated: false }
+  }
+  return { password: generatePassword(), generated: true }
 }
 
 function fail(message: string): never {
@@ -54,7 +65,7 @@ switch (command) {
     if (users.length === 0) console.log("Nenhum usuário cadastrado.")
     for (const u of users) {
       console.log(
-        `${u.is_active ? "●" : "○"} ${u.name.padEnd(24)} ${u.email.padEnd(32)} ${ROLE_LABEL[u.role].padEnd(9)} ${u.job_title ?? ""}${u.is_active ? "" : "  (desativado)"}`
+        `${u.is_active ? "●" : "○"} ${u.name.padEnd(24)} ${u.email.padEnd(32)} ${profileLabel(u).padEnd(9)} ${u.job_title ?? ""}${u.is_active ? "" : "  (desativado)"}`
       )
     }
     break
@@ -62,34 +73,38 @@ switch (command) {
 
   case "criar": {
     const name = values.nome?.trim()
-    const role = ROLES[values.perfil?.toLowerCase() ?? ""]
-    if (!name || !email || !role) {
-      fail('Uso: npm run usuarios -- criar --nome "Nome Sobrenome" --email pessoa@empresa --perfil gestor|executor [--cargo "Cargo"]')
+    const profile = PROFILES[values.perfil?.toLowerCase() ?? ""]
+    if (!name || !email || !profile) {
+      fail('Uso: npm run usuarios -- criar --nome "Nome Sobrenome" --email pessoa@empresa --perfil admin|gestor|executor [--cargo "Cargo"]')
     }
     if (findByEmail()) fail(`Já existe um usuário com o e-mail ${email}.`)
 
     const { n } = db.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number }
-    const password = generatePassword()
+    const { password, generated } = chosenPassword()
     insertUser(db, {
       name,
       email,
-      role,
+      ...profile,
       jobTitle: values.cargo?.trim(),
       passwordHash: await hashPassword(password),
       avatarColor: AVATAR_COLORS[n % AVATAR_COLORS.length],
     })
-    console.log(`✔ ${name} cadastrado(a) como ${ROLE_LABEL[role]}.`)
-    console.log(`  Senha temporária: ${password}`)
-    console.log("  Entregue a senha pessoalmente; ela não fica salva em lugar nenhum.")
+    console.log(`✔ ${name} cadastrado(a) como ${values.perfil?.toLowerCase()}.`)
+    if (generated) {
+      console.log(`  Senha temporária: ${password}`)
+      console.log("  Entregue a senha pessoalmente; ela não fica salva em lugar nenhum.")
+    } else {
+      console.log("  Senha definida pela variável SENHA.")
+    }
     break
   }
 
   case "senha": {
     const user = findByEmail() ?? fail(`Usuário ${email ?? "(sem e-mail)"} não encontrado.`)
-    const password = generatePassword()
+    const { password, generated } = chosenPassword()
     db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(await hashPassword(password), user.id)
     db.prepare("DELETE FROM sessions WHERE user_id = ?").run(user.id)
-    console.log(`✔ Nova senha de ${user.name}: ${password}`)
+    console.log(generated ? `✔ Nova senha de ${user.name}: ${password}` : `✔ Senha de ${user.name} atualizada.`)
     console.log("  As sessões abertas dessa pessoa foram encerradas.")
     break
   }
@@ -106,7 +121,7 @@ switch (command) {
 
   default:
     console.log(`Comandos: listar | criar | senha | desativar | ativar
-Exemplo: npm run usuarios -- criar --nome "Ana Lima" --email ana@empresa.com.br --perfil gestor --cargo "Gerente de TI"`)
+Exemplo: npm run usuarios -- criar --nome "Ana Lima" --email ana@empresa.com.br --perfil admin --cargo "Gerente de TI"`)
 }
 
 db.close()

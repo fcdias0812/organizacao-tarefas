@@ -3,17 +3,9 @@ import { cn } from "cn"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useAppConfig } from "@/features/settings/appConfig"
 import { formatDueLabel, formatLongDate, getDueState } from "@/lib/dates"
-import {
-  AVATAR_COLORS,
-  CATEGORY_META,
-  initials,
-  PRIORITY_META,
-  ROLE_LABEL,
-  type CategoryKey,
-  type TaskPriority,
-  type User,
-} from "@/lib/domain"
+import { AVATAR_COLORS, initials, profileLabel, type CategoryKey, type TaskPriority, type User } from "@/lib/domain"
 
 export function PriorityDot({
   priority,
@@ -24,13 +16,13 @@ export function PriorityDot({
   showLabel?: boolean
   className?: string
 }) {
-  const meta = PRIORITY_META[priority]
+  const meta = useAppConfig().priority(priority)
   const dot = (
     <span
       className={cn("inline-flex items-center gap-1.5 text-xs font-medium text-ink-2", className)}
       aria-label={`Prioridade ${meta.label}`}
     >
-      <span className={cn("size-2 rounded-full", meta.dotClass)} />
+      <span className="size-2 rounded-full" style={{ backgroundColor: meta.color }} />
       {showLabel && meta.label}
     </span>
   )
@@ -45,7 +37,7 @@ export function PriorityDot({
 }
 
 export function CategoryLabel({ category, className }: { category: CategoryKey; className?: string }) {
-  const { label, icon: Icon } = CATEGORY_META[category]
+  const { label, Icon } = useAppConfig().category(category)
   return (
     <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium text-ink-3", className)}>
       <Icon className="size-3.5" strokeWidth={2} />
@@ -55,7 +47,7 @@ export function CategoryLabel({ category, className }: { category: CategoryKey; 
 }
 
 export function CategoryChip({ category, className }: { category: CategoryKey; className?: string }) {
-  const { label, icon: Icon } = CATEGORY_META[category]
+  const { label, Icon } = useAppConfig().category(category)
   return (
     <span
       className={cn(
@@ -85,7 +77,8 @@ export function DueChip({
   muted?: boolean
   now?: Date
 }) {
-  const state = muted ? "normal" : getDueState(dueDate, now)
+  const { soonDays } = useAppConfig().settings
+  const state = muted ? "normal" : getDueState(dueDate, now, soonDays)
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -129,7 +122,7 @@ export function UserAvatar({
     <Tooltip>
       <TooltipTrigger asChild>{avatar}</TooltipTrigger>
       <TooltipContent>
-        {user.name} · {user.jobTitle ?? ROLE_LABEL[user.role]}
+        {user.name} · {user.jobTitle ?? profileLabel(user)}
       </TooltipContent>
     </Tooltip>
   )

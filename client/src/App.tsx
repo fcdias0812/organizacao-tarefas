@@ -5,10 +5,8 @@ import { RedirectIfAuthenticated, RequireAuth } from "@/features/auth/RequireAut
 import { BoardPage } from "@/pages/BoardPage"
 import { LoginPage } from "@/pages/LoginPage"
 
-// Vitrine do design system: só existe em desenvolvimento e é carregada sob demanda.
-const DesignSystemPage = import.meta.env.DEV
-  ? lazy(() => import("@/pages/design-system/DesignSystemPage").then((m) => ({ default: m.DesignSystemPage })))
-  : () => null
+// Configurações: só o administrador usa, então fica fora do pacote principal.
+const SettingsPage = lazy(() => import("@/pages/settings/SettingsPage").then((m) => ({ default: m.SettingsPage })))
 
 export default function App() {
   return (
@@ -23,18 +21,15 @@ export default function App() {
       />
       <Route element={<RequireAuth />}>
         <Route index element={<BoardPage />} />
-      </Route>
-      {/* Vitrine do design system: só no ambiente de desenvolvimento. */}
-      {import.meta.env.DEV && (
         <Route
-          path="/design-system"
+          path="configuracoes/:aba?"
           element={
             <Suspense fallback={null}>
-              <DesignSystemPage />
+              <SettingsPage />
             </Suspense>
           }
         />
-      )}
+      </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

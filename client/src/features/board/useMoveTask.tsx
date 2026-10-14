@@ -11,7 +11,7 @@ import {
 } from "@tarefas/shared"
 
 import { api } from "@/lib/api"
-import { STATUS_META } from "@/lib/domain"
+import { useAppConfig, type AppConfig } from "@/features/settings/appConfig"
 import { queryKeys } from "@/lib/queryClient"
 
 export interface MoveRequest {
@@ -48,6 +48,7 @@ function applyMove(list: TaskSummaryDTO[], req: MoveRequest, event: TaskEventTyp
  */
 export function useMoveTask(actorRole: UserRole | undefined) {
   const queryClient = useQueryClient()
+  const config = useAppConfig()
   const mutation = useMutation({
     mutationFn: (req: MoveRequest) =>
       api<{ task: TaskSummaryDTO }>("POST", `/tasks/${req.task.id}/move`, {
@@ -65,7 +66,7 @@ export function useMoveTask(actorRole: UserRole | undefined) {
       actorRole,
       checklistDone: req.task.checklistDone,
       checklistTotal: req.task.checklistTotal,
-    })
+    }, config.ruleOptions)
     const event = preview.ok ? preview.event : null
 
     // Atualização síncrona: o card não "pisca" na coluna antiga ao soltar.
@@ -84,7 +85,7 @@ export function useMoveTask(actorRole: UserRole | undefined) {
           list?.map((t) => (t.id === task.id ? task : t))
         )
         if (!options.silent && event) {
-          notify(event, req.status, () =>
+          notify(config, event, req.status, () =>
             move({ task, status: req.task.status, index: originalIndex }, { silent: true })
           )
         }
@@ -103,22 +104,22 @@ export function useMoveTask(actorRole: UserRole | undefined) {
   return { move, isPending: mutation.isPending }
 }
 
-function notify(event: TaskEventType, status: TaskStatus, undo: () => void) {
+function notify({ statusLabel }: AppConfig, event: TaskEventType, status: TaskStatus, undo: () => void) {
   switch (event) {
     case "moved":
-      toast(`Movido para ${STATUS_META[status].label}`, {
+      toast(`Movido para ${statusLabel(status)}`, {
         duration: 3500,
         action: { label: "Desfazer", onClick: undo },
       })
       break
     case "sent_to_review":
-      toast.success("Enviado para Revisão", { description: "O gestor confere antes de concluir." })
+      toast.success(`Enviado para ${statusLabel("review")}`, { description: "O gestor confere antes de concluir." })
       break
     case "approved":
       toast.success("Aprovado e concluído")
       break
     case "returned":
-      toast("Devolvido para Em andamento", {
+      toast(`Devolvido para ${statusLabel("in_progress")}`, {
         description: "O motivo ficou registrado no card e no histórico.",
         icon: <Undo2 className="size-4 text-warning" />,
       })
@@ -127,7 +128,7 @@ function notify(event: TaskEventType, status: TaskStatus, undo: () => void) {
       toast("Tarefa bloqueada", { icon: <Ban className="size-4 text-danger" /> })
       break
     case "unblocked":
-      toast.success(`Desbloqueada e movida para ${STATUS_META[status].label}`)
+      toast.success(`Desbloqueada e movida para ${statusLabel(status)}`)
       break
     case "reopened":
       toast("Tarefa reaberta", { icon: <RotateCcw className="size-4 text-brand-600" /> })

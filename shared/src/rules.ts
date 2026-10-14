@@ -1,10 +1,22 @@
+import { DEFAULT_SETTINGS } from "./settings"
 import type { TaskEventType, TaskStatus, UserRole } from "./types"
 
 /**
  * Regras de qualidade do quadro. Usadas pelo servidor (que decide) e pela
  * interface (que antecipa o resultado para dar feedback durante o arraste).
- * As mensagens são exibidas ao usuário, por isso estão em português.
+ * As mensagens são exibidas ao usuário, por isso estão em português, e usam
+ * os nomes de colunas configurados pelo administrador.
  */
+
+export interface RuleOptions {
+  statusLabels: Record<TaskStatus, string>
+  reasonMinLength: number
+}
+
+const DEFAULT_OPTIONS: RuleOptions = {
+  statusLabels: DEFAULT_SETTINGS.statusLabels,
+  reasonMinLength: DEFAULT_SETTINGS.reasonMinLength,
+}
 
 export interface Actor {
   id: number
@@ -30,7 +42,6 @@ export interface MoveInput {
   reason?: string | null
 }
 
-export const REASON_MIN_LENGTH = 3
 export const REASON_MAX_LENGTH = 500
 
 /** Statuses em que o checklist pode ser alterado. */
@@ -38,8 +49,8 @@ export const CHECKLIST_EDITABLE_STATUSES: readonly TaskStatus[] = ["todo", "in_p
 
 const deny = (code: RuleViolationCode, message: string) => ({ ok: false as const, code, message })
 
-export function hasValidReason(reason: string | null | undefined): boolean {
-  return (reason?.trim().length ?? 0) >= REASON_MIN_LENGTH
+export function hasValidReason(reason: string | null | undefined, minLength = DEFAULT_OPTIONS.reasonMinLength): boolean {
+  return (reason?.trim().length ?? 0) >= Math.max(1, minLength)
 }
 
 export function isChecklistComplete(done: number, total: number): boolean {
@@ -50,36 +61,39 @@ export function isChecklistComplete(done: number, total: number): boolean {
  * Valida uma movimentação entre colunas e informa qual evento registrar.
  * `event: null` significa reordenação dentro da mesma coluna (sem histórico).
  */
-export function checkMove(input: MoveInput): RuleResult<{ event: TaskEventType | null }> {
+export function checkMove(
+  input: MoveInput,
+  options: RuleOptions = DEFAULT_OPTIONS
+): RuleResult<{ event: TaskEventType | null }> {
   const { from, to, actorRole, checklistDone, checklistTotal, reason } = input
   const isManager = actorRole === "manager"
+  const L = options.statusLabels
+  const validReason = hasValidReason(reason, options.reasonMinLength)
 
   if (from === to) return { ok: true, event: null }
 
   // Saindo da Revisão: só o gestor, para aprovar ou devolver.
   if (from === "review") {
-    if (!isManager) return deny("forbidden", "Só o gestor tira um card da Revisão.")
+    if (!isManager) return deny("forbidden", `Só o gestor tira um card de ${L.review}.`)
     if (to === "done") return { ok: true, event: "approved" }
     if (to === "in_progress") {
-      if (!hasValidReason(reason)) {
-        return deny("reason_required", "Informe o motivo da devolução.")
-      }
+      if (!validReason) return deny("reason_required", "Informe o motivo da devolução.")
       return { ok: true, event: "returned" }
     }
-    return deny("invalid_transition", "Na Revisão o gestor aprova ou devolve o card.")
+    return deny("invalid_transition", `Em ${L.review} o gestor aprova ou devolve o card.`)
   }
 
   // Saindo de Concluído: reabrir é só com o gestor.
   if (from === "done") {
     if (!isManager) return deny("forbidden", "Só o gestor reabre um card concluído.")
     if (to === "todo" || to === "in_progress") return { ok: true, event: "reopened" }
-    return deny("invalid_transition", "Para reabrir, mova o card para A fazer ou Em andamento.")
+    return deny("invalid_transition", `Para reabrir, mova o card para ${L.todo} ou ${L.in_progress}.`)
   }
 
   // Saindo de Bloqueado: volta para o fluxo normal.
   if (from === "blocked") {
     if (to === "todo" || to === "in_progress") return { ok: true, event: "unblocked" }
-    return deny("invalid_transition", "Desbloqueie o card movendo para A fazer ou Em andamento.")
+    return deny("invalid_transition", `Desbloqueie o card movendo para ${L.todo} ou ${L.in_progress}.`)
   }
 
   // A partir daqui: from é "todo" ou "in_progress".
@@ -88,25 +102,25 @@ export function checkMove(input: MoveInput): RuleResult<{ event: TaskEventType |
     case "in_progress":
       return { ok: true, event: "moved" }
     case "blocked":
-      if (!hasValidReason(reason)) return deny("reason_required", "Informe o motivo do bloqueio.")
+      if (!validReason) return deny("reason_required", "Informe o motivo do bloqueio.")
       return { ok: true, event: "blocked" }
     case "review": {
       if (checklistTotal === 0) {
-        return deny("checklist_incomplete", "Adicione o checklist de pronto antes de enviar para Revisão.")
+        return deny("checklist_incomplete", `Adicione ao menos um item no checklist antes de enviar para ${L.review}.`)
       }
       const missing = checklistTotal - checklistDone
       if (missing > 0) {
         return deny(
           "checklist_incomplete",
           missing === 1
-            ? "Falta 1 item do checklist para enviar à Revisão."
-            : `Faltam ${missing} itens do checklist para enviar à Revisão.`
+            ? `Falta 1 item do checklist para enviar para ${L.review}.`
+            : `Faltam ${missing} itens do checklist para enviar para ${L.review}.`
         )
       }
       return { ok: true, event: "sent_to_review" }
     }
     case "done":
-      return deny("invalid_transition", "Antes de concluir, o card passa pela Revisão do gestor.")
+      return deny("invalid_transition", `Antes de concluir, o card passa por ${L.review} com o gestor.`)
   }
 }
 
@@ -119,9 +133,10 @@ export const EVENTS_REQUIRING_REASON: readonly TaskEventType[] = ["blocked", "re
  * é preciso pedir o motivo (bloquear ou devolver).
  */
 export function previewMove(
-  input: Omit<MoveInput, "reason">
+  input: Omit<MoveInput, "reason">,
+  options: RuleOptions = DEFAULT_OPTIONS
 ): RuleResult<{ event: TaskEventType | null; needsReason: boolean }> {
-  const result = checkMove({ ...input, reason: "x".repeat(REASON_MIN_LENGTH) })
+  const result = checkMove({ ...input, reason: "x".repeat(Math.max(1, options.reasonMinLength)) }, options)
   if (!result.ok) return result
   return { ok: true, event: result.event, needsReason: result.event !== null && EVENTS_REQUIRING_REASON.includes(result.event) }
 }
@@ -150,12 +165,12 @@ export function checkAssign(actor: Actor, assigneeId: number | null): RuleResult
   return deny("forbidden", "Só o gestor atribui tarefas para outras pessoas.")
 }
 
-export function checkChecklistEditable(status: TaskStatus): RuleResult {
+export function checkChecklistEditable(status: TaskStatus, options: RuleOptions = DEFAULT_OPTIONS): RuleResult {
   if (CHECKLIST_EDITABLE_STATUSES.includes(status)) return { ok: true }
   return deny(
     "invalid_transition",
     status === "review"
-      ? "O checklist fica travado enquanto o card está em Revisão."
+      ? `O checklist fica travado enquanto o card está em ${options.statusLabels.review}.`
       : "O checklist fica travado em cards concluídos."
   )
 }
