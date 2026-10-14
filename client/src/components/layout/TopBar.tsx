@@ -25,7 +25,7 @@ export function TopBar({ team }: { team: UserDTO[] }) {
   if (!me) return null
 
   return (
-    <header className="flex h-16 shrink-0 items-center gap-4 px-4 sm:px-6">
+    <header className="flex h-16 shrink-0 short:h-14 items-center gap-4 px-4 sm:px-6">
       <Link to="/" className="rounded-xl outline-none focus-visible:ring-4 focus-visible:ring-brand-100">
         <AppLogo />
       </Link>

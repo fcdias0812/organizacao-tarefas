@@ -27,9 +27,11 @@ interface FilterBarProps {
   visibleCount: number
   /** Campo de busca, para o atalho "/" focar nele. */
   searchRef?: React.Ref<HTMLInputElement>
+  /** Controles alinhados à direita da barra (ex.: tamanho dos cards). */
+  trailing?: React.ReactNode
 }
 
-export function FilterBar({ api, users, me, visibleCount, searchRef }: FilterBarProps) {
+export function FilterBar({ api, users, me, visibleCount, searchRef, trailing }: FilterBarProps) {
   const { filters } = api
   const config = useAppConfig()
   const userName = (id: AssigneeFilter) =>
@@ -151,6 +153,8 @@ export function FilterBar({ api, users, me, visibleCount, searchRef }: FilterBar
           </button>
         </>
       )}
+
+      {trailing && <div className="ml-auto shrink-0 pl-2">{trailing}</div>}
     </div>
   )
 }

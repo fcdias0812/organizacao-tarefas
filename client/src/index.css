@@ -3,6 +3,9 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
 
+/* Telas baixas (notebook com zoom do Windows): cabeçalho mais enxuto para sobrar altura ao quadro. */
+@custom-variant short (@media (max-height: 860px));
+
 /*
  * Design tokens — Tarefas TI
  * Base branca, violeta (#7C3AED) só em ações principais, destaques e estado ativo.

@@ -9,6 +9,12 @@ import type { TaskStatus } from "@/lib/domain"
 
 export type DropState = "idle" | "accept" | "deny"
 
+/**
+ * Largura da coluna: fixa no celular (rola para o lado); a partir de lg as colunas dividem a
+ * largura da tela — encolhem no notebook para caberem todas e crescem no monitor grande.
+ */
+export const COLUMN_WIDTH = "w-[300px] shrink-0 lg:w-auto lg:min-w-[220px] lg:max-w-[520px] lg:flex-1 lg:basis-0"
+
 interface BoardColumnProps {
   status: TaskStatus
   count: number
@@ -41,7 +47,8 @@ export function BoardColumn({
       ref={ref}
       aria-label={label}
       className={cn(
-        "flex min-h-0 w-[300px] shrink-0 flex-col rounded-3xl bg-surface-sunken/80 p-2 transition-[background-color,box-shadow,opacity] duration-200",
+        COLUMN_WIDTH,
+        "flex min-h-0 flex-col rounded-3xl bg-surface-sunken/80 p-2 transition-[background-color,box-shadow,opacity] duration-200",
         dropState === "accept" && "bg-brand-50 shadow-[inset_0_0_0_2px_var(--brand-200)]",
         dropState === "deny" && "opacity-55",
         className

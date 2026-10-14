@@ -36,8 +36,28 @@ export function PriorityDot({
   )
 }
 
-export function CategoryLabel({ category, className }: { category: CategoryKey; className?: string }) {
+export function CategoryLabel({
+  category,
+  iconOnly = false,
+  className,
+}: {
+  category: CategoryKey
+  /** Só o ícone (card compacto); o nome aparece ao passar o mouse. */
+  iconOnly?: boolean
+  className?: string
+}) {
   const { label, Icon } = useAppConfig().category(category)
+  if (iconOnly)
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className={cn("inline-flex shrink-0 text-ink-3", className)} aria-label={`Categoria ${label}`}>
+            <Icon className="size-3.5" strokeWidth={2} />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+    )
   return (
     <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium text-ink-3", className)}>
       <Icon className="size-3.5" strokeWidth={2} />
@@ -84,7 +104,7 @@ export function DueChip({
       <TooltipTrigger asChild>
         <span
           className={cn(
-            "inline-flex h-6 items-center gap-1 rounded-full text-xs font-medium",
+            "inline-flex h-6 shrink-0 items-center gap-1 rounded-full text-xs font-medium whitespace-nowrap",
             state === "normal" ? "px-0" : "px-2",
             dueStyles[state]
           )}

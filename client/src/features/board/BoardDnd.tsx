@@ -71,11 +71,22 @@ interface BoardDndProps {
   onAddTask?: () => void
   /** Ids que passam nos filtros; null = sem filtro. */
   visibleIds?: Set<number> | null
+  /** Cards compactos: mais cards por coluna em telas baixas. */
+  compact?: boolean
   /** Card recém-criado, destacado por alguns segundos. */
   highlightId?: number | null
 }
 
-export function BoardDnd({ tasks, users, me, onOpenTask, onAddTask, visibleIds = null, highlightId = null }: BoardDndProps) {
+export function BoardDnd({
+  tasks,
+  users,
+  me,
+  onOpenTask,
+  onAddTask,
+  visibleIds = null,
+  highlightId = null,
+  compact = false,
+}: BoardDndProps) {
   const [now] = useState(() => new Date())
   const config = useAppConfig()
   const { move } = useMoveTask(me.role)
@@ -295,7 +306,7 @@ export function BoardDnd({ tasks, users, me, onOpenTask, onAddTask, visibleIds =
     >
       <div
         className={cn(
-          "scroll-soft flex h-full snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-4 sm:gap-4 sm:px-6 md:snap-none",
+          "scroll-soft flex h-full snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-4 sm:gap-4 sm:px-6 md:snap-none lg:gap-3",
           activeId !== null && "snap-none"
         )}
       >
@@ -327,6 +338,7 @@ export function BoardDnd({ tasks, users, me, onOpenTask, onAddTask, visibleIds =
                         now={now}
                         rejected={rejectedId === id}
                         highlighted={highlightId === id}
+                        compact={compact}
                         actions={task.status === "review" && status === "review" ? reviewActions(task) : undefined}
                         onOpen={() => onOpenTask(id)}
                       />
@@ -341,7 +353,7 @@ export function BoardDnd({ tasks, users, me, onOpenTask, onAddTask, visibleIds =
       </div>
 
       <DragOverlay dropAnimation={dropAnimation}>
-        {activeCard ? <TaskCard task={activeCard} now={now} lifted /> : null}
+        {activeCard ? <TaskCard task={activeCard} now={now} compact={compact} lifted /> : null}
       </DragOverlay>
 
       <ReasonDialog
@@ -371,11 +383,13 @@ function SortableTaskCard({
   actions,
   onOpen,
   highlighted,
+  compact,
 }: {
   card: TaskCardData
   now: Date
   rejected: boolean
   highlighted: boolean
+  compact: boolean
   actions?: React.ReactNode
   onOpen: () => void
 }) {
@@ -410,6 +424,7 @@ function SortableTaskCard({
         now={now}
         rejected={rejected}
         actions={actions}
+        compact={compact}
         role={undefined}
         tabIndex={-1}
         className={cn(

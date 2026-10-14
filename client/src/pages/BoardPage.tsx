@@ -1,15 +1,19 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react"
 import { CalendarClock, Eye, Plus, RotateCw, WifiOff } from "lucide-react"
 import { useSearchParams } from "react-router"
+import { cn } from "cn"
 
+import { COLUMN_WIDTH } from "@/components/board/BoardColumn"
 import { TopBar } from "@/components/layout/TopBar"
 import { Button } from "@/components/ui/button"
 import { Kbd } from "@/components/ui/kbd"
 import { useMe } from "@/features/auth/useAuth"
 import { BoardDnd } from "@/features/board/BoardDnd"
+import { DensityToggle } from "@/features/board/DensityToggle"
 import { FilterBar } from "@/features/board/FilterBar"
 import { useBoard } from "@/features/board/useBoardData"
 import { filterTasks, useBoardFilters } from "@/features/board/useBoardFilters"
+import { useCardDensity } from "@/features/board/useCardDensity"
 import { QuickCreate } from "@/features/task/QuickCreate"
 import { useAppConfig } from "@/features/settings/appConfig"
 import { getDueState } from "@/lib/dates"
@@ -45,6 +49,7 @@ export function BoardPage() {
     [board.tasks, filtersApi.filters, filtersApi.isActive]
   )
 
+  const { density, setDensity } = useCardDensity()
   const [quickOpen, setQuickOpen] = useState(false)
   const [highlightId, setHighlightId] = useState<number | null>(null)
   const highlightTimer = useRef<number | undefined>(undefined)
@@ -73,11 +78,11 @@ export function BoardPage() {
     <div className="flex h-dvh flex-col bg-canvas">
       <TopBar team={board.users} />
 
-      <div className="space-y-4 px-4 pt-4 pb-4 sm:px-6">
+      <div className="space-y-4 px-4 pt-4 pb-4 sm:px-6 short:space-y-3 short:pt-1 short:pb-3">
         <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
           <div className="space-y-1">
-            <p className="text-sm text-ink-3 first-letter:uppercase">{todayLabel()}</p>
-            <h1 className="text-2xl font-semibold tracking-tight text-ink">
+            <p className="text-sm text-ink-3 first-letter:uppercase short:hidden">{todayLabel()}</p>
+            <h1 className="text-2xl font-semibold tracking-tight text-ink short:text-xl">
               {greeting()}, {me?.name.split(" ")[0]}
             </h1>
           </div>
@@ -94,6 +99,7 @@ export function BoardPage() {
             me={me}
             visibleCount={visibleIds?.size ?? board.tasks.length}
             searchRef={searchRef}
+            trailing={<DensityToggle value={density} onChange={setDensity} />}
           />
         )}
       </div>
@@ -113,6 +119,7 @@ export function BoardPage() {
               onAddTask={() => setQuickOpen(true)}
               visibleIds={visibleIds}
               highlightId={highlightId}
+              compact={density === "compact"}
             />
           )
         )}
@@ -173,7 +180,7 @@ function BoardSkeleton() {
   return (
     <div className="flex h-full gap-3 overflow-hidden px-4 pb-6 sm:gap-4 sm:px-6" aria-busy aria-label="Carregando o quadro">
       {STATUS_ORDER.map((status) => (
-        <div key={status} className="flex w-[300px] shrink-0 flex-col gap-2 rounded-3xl bg-surface-sunken/80 p-3">
+        <div key={status} className={cn(COLUMN_WIDTH, "flex flex-col gap-2 rounded-3xl bg-surface-sunken/80 p-3")}>
           <div className="mb-1 h-6 w-28 animate-pulse rounded-full bg-hairline" />
           {Array.from({ length: counts[status] }, (_, i) => (
             <div key={i} className="h-[112px] animate-pulse rounded-xl bg-surface shadow-card" />
