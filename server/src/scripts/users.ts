@@ -19,6 +19,7 @@ import { AVATAR_COLORS, type UserRole } from "@tarefas/shared"
 import { hashPassword } from "../auth/sessions"
 import { config, dbLabel } from "../config"
 import { openDatabase } from "../db/connection"
+import { recordAudit } from "../services/audit"
 import { generatePassword, insertUser, type UserRow } from "../services/users"
 
 const PROFILES: Record<string, { role: UserRole; isAdmin: boolean }> = {
@@ -90,6 +91,12 @@ switch (command) {
       passwordHash: await hashPassword(password),
       avatarColor: AVATAR_COLORS[n % AVATAR_COLORS.length],
     })
+    await recordAudit(db, {
+      actorId: null,
+      area: "users",
+      action: "user.created",
+      summary: `cadastrou o usuário ${name} (${email}) como ${values.perfil?.toLowerCase()} pela linha de comando`,
+    })
     console.log(`✔ ${name} cadastrado(a) como ${values.perfil?.toLowerCase()}.`)
     if (generated) {
       console.log(`  Senha temporária: ${password}`)
@@ -105,6 +112,12 @@ switch (command) {
     const { password, generated } = chosenPassword()
     await db.run("UPDATE users SET password_hash = ? WHERE id = ?", await hashPassword(password), user.id)
     await db.run("DELETE FROM sessions WHERE user_id = ?", user.id)
+    await recordAudit(db, {
+      actorId: null,
+      area: "users",
+      action: "user.password_reset",
+      summary: `trocou a senha de ${user.name} pela linha de comando (as sessões abertas foram encerradas)`,
+    })
     console.log(generated ? `✔ Nova senha de ${user.name}: ${password}` : `✔ Senha de ${user.name} atualizada.`)
     console.log("  As sessões abertas dessa pessoa foram encerradas.")
     break
@@ -116,6 +129,12 @@ switch (command) {
     const active = command === "ativar"
     await db.run("UPDATE users SET is_active = ? WHERE id = ?", active ? 1 : 0, user.id)
     if (!active) await db.run("DELETE FROM sessions WHERE user_id = ?", user.id)
+    await recordAudit(db, {
+      actorId: null,
+      area: "users",
+      action: "user.updated",
+      summary: `${active ? "reativou" : "desativou"} o acesso de ${user.name} pela linha de comando`,
+    })
     console.log(`✔ ${user.name} ${active ? "reativado(a)" : "desativado(a)"}.`)
     break
   }

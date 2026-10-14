@@ -5,8 +5,9 @@ import { RedirectIfAuthenticated, RequireAuth } from "@/features/auth/RequireAut
 import { BoardPage } from "@/pages/BoardPage"
 import { LoginPage } from "@/pages/LoginPage"
 
-// Configurações: só o administrador usa, então fica fora do pacote principal.
+// Páginas fora do quadro (Configurações só o administrador usa): ficam fora do pacote principal.
 const SettingsPage = lazy(() => import("@/pages/settings/SettingsPage").then((m) => ({ default: m.SettingsPage })))
+const AuditPage = lazy(() => import("@/pages/AuditPage").then((m) => ({ default: m.AuditPage })))
 
 export default function App() {
   return (
@@ -21,6 +22,14 @@ export default function App() {
       />
       <Route element={<RequireAuth />}>
         <Route index element={<BoardPage />} />
+        <Route
+          path="auditoria"
+          element={
+            <Suspense fallback={null}>
+              <AuditPage />
+            </Suspense>
+          }
+        />
         <Route
           path="configuracoes/:aba?"
           element={

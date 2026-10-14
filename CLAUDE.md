@@ -27,7 +27,12 @@ Visão geral, comandos e regras de negócio: ver `README.md`.
   (`features/settings/appConfig.ts`); no servidor, `getSettings()`/`ruleOptions()`. Padrões em `shared/src/settings.ts`.
 - Categorias são dinâmicas (tabela `categories`, chave = slug imutável). Categoria com tarefas só é desativada, nunca excluída.
 - Administrador = gestor com `is_admin`. Rotas `/api/admin/*` usam `requireAdmin`. Sempre deve existir 1 admin ativo.
-- Histórico (`task_events`) só recebe inserções.
+- Histórico (`task_events`) e auditoria (`audit_log`) só recebem inserções. Única exceção: "excluir de vez"
+  (administrador, só tarefa arquivada) apaga o histórico daquela tarefa — e fica registrado na auditoria.
+- Auditoria: toda ação que muda algo registra uma frase pronta (`recordAudit`, `server/src/services/audit.ts`)
+  na rota, depois que a ação deu certo. Ação nova = registro novo. Senha nunca entra no texto.
+- Tarefa arquivada (`archived_at`) fica fora do quadro e só para leitura (`checkNotArchived`); não conta
+  para a posição na coluna.
 
 ## Design
 

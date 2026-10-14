@@ -2,10 +2,13 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
 import {
+  checkArchive,
   checkAssign,
   checkChecklistEditable,
   checkChecklistItemRemoval,
   checkMove,
+  checkNotArchived,
+  checkPermanentDelete,
   positionBetween,
   previewMove,
   type MoveInput,
@@ -190,5 +193,33 @@ describe("opções configuráveis", () => {
     assert.equal(!muitoCurto.ok && muitoCurto.code, "reason_required")
     const preview = previewMove({ ...base, from: "in_progress", to: "blocked" }, options)
     assert.equal(preview.ok && preview.needsReason, true)
+  })
+})
+
+describe("arquivar e excluir de vez", () => {
+  const executor = { id: 3, role: "executor" as const }
+  const manager = { id: 1, role: "manager" as const }
+
+  it("gestor ou quem criou arquiva e restaura", () => {
+    assert.equal(checkArchive(manager, { createdById: 3 }).ok, true)
+    assert.equal(checkArchive(executor, { createdById: 3 }).ok, true)
+    const outro = checkArchive(executor, { createdById: 2 }, "restore")
+    assert.equal(!outro.ok && outro.code, "forbidden")
+    assert.equal(!outro.ok && outro.message, "Só o gestor ou quem criou a tarefa pode restaurá-la.")
+  })
+
+  it("tarefa arquivada fica só para leitura", () => {
+    assert.equal(checkNotArchived({ archivedAt: null }).ok, true)
+    const r = checkNotArchived({ archivedAt: "2026-10-14T12:00:00.000Z" })
+    assert.equal(!r.ok && r.code, "invalid_transition")
+  })
+
+  it("excluir de vez: só administrador e só tarefa arquivada", () => {
+    const archived = { archivedAt: "2026-10-14T12:00:00.000Z" }
+    assert.equal(checkPermanentDelete({ isAdmin: true }, archived).ok, true)
+    const naoAdmin = checkPermanentDelete({ isAdmin: false }, archived)
+    assert.equal(!naoAdmin.ok && naoAdmin.code, "forbidden")
+    const ativa = checkPermanentDelete({ isAdmin: true }, { archivedAt: null })
+    assert.equal(!ativa.ok && ativa.message, "Arquive a tarefa antes de excluir de vez.")
   })
 })

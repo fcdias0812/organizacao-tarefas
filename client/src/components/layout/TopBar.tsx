@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ChevronDown, KeyRound, LogOut, Settings } from "lucide-react"
+import { ChevronDown, KeyRound, LogOut, ScrollText, Settings } from "lucide-react"
 import { Link, useNavigate } from "react-router"
 import type { UserDTO } from "@tarefas/shared"
 
@@ -63,6 +63,9 @@ export function TopBar({ team }: { team: UserDTO[] }) {
                 <Settings /> Configurações
               </DropdownMenuItem>
             )}
+            <DropdownMenuItem onSelect={() => navigate("/auditoria")}>
+              <ScrollText /> Auditoria
+            </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setPasswordOpen(true)}>
               <KeyRound /> Alterar senha
             </DropdownMenuItem>

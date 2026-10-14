@@ -24,6 +24,8 @@ export type TaskEventType =
   | "reopened"
   | "assigned"
   | "updated"
+  | "archived"
+  | "restored"
 
 export interface UserDTO {
   id: number
@@ -82,6 +84,9 @@ export interface TaskSummaryDTO {
   createdAt: string
   updatedAt: string
   completedAt: string | null
+  /** Arquivada: fora do quadro, com histórico preservado (dá para restaurar). */
+  archivedAt: string | null
+  archivedById: number | null
 }
 
 export interface ChecklistItemDTO {
@@ -117,4 +122,24 @@ export interface ApiErrorBody {
     code: string
     message: string
   }
+}
+
+/* ───────────────────────── auditoria ───────────────────────── */
+
+/** Áreas do sistema registradas na auditoria. */
+export const AUDIT_AREAS = ["access", "tasks", "checklist", "comments", "users", "categories", "settings"] as const
+export type AuditArea = (typeof AUDIT_AREAS)[number]
+
+/** Uma ação registrada: quem fez, onde, quando e uma frase pronta descrevendo o que mudou. */
+export interface AuditEntryDTO {
+  id: number
+  /** null = feito pela linha de comando (fora da tela). */
+  actorId: number | null
+  actorName: string | null
+  area: AuditArea
+  action: string
+  /** Tarefa envolvida, quando houver (pode já ter sido excluída de vez). */
+  taskId: number | null
+  summary: string
+  createdAt: string
 }

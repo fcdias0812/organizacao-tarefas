@@ -1,8 +1,11 @@
 import {
+  checkArchive,
   checkAssign,
   checkChecklistEditable,
   checkChecklistItemRemoval,
   checkMove,
+  checkNotArchived,
+  checkPermanentDelete,
   POSITION_STEP,
   positionBetween,
   type Actor,
@@ -48,6 +51,8 @@ interface TaskRow {
   created_at: string
   updated_at: string
   completed_at: string | null
+  archived_at: string | null
+  archived_by: number | null
   checklist_done: number
   checklist_total: number
   comment_count: number
@@ -81,6 +86,8 @@ function toSummary(row: TaskRow): TaskSummaryDTO {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     completedAt: row.completed_at,
+    archivedAt: row.archived_at,
+    archivedById: row.archived_by,
   }
 }
 
@@ -90,8 +97,21 @@ async function getTaskRow(db: Db, id: number): Promise<TaskRow> {
   return row
 }
 
+/** Tarefa que pode ser alterada (não arquivada). */
+async function getWritableTaskRow(db: Db, id: number): Promise<TaskRow> {
+  const row = await getTaskRow(db, id)
+  assertRule(checkNotArchived({ archivedAt: row.archived_at }))
+  return row
+}
+
+/** Quadro: só as tarefas ativas. */
 export async function listTasks(db: Db): Promise<TaskSummaryDTO[]> {
-  return (await db.all<TaskRow>(`${TASK_SELECT} ORDER BY t.status, t.position`)).map(toSummary)
+  return (await db.all<TaskRow>(`${TASK_SELECT} WHERE t.archived_at IS NULL ORDER BY t.status, t.position`)).map(toSummary)
+}
+
+/** Arquivadas, das mais recentes para as mais antigas. */
+export async function listArchivedTasks(db: Db): Promise<TaskSummaryDTO[]> {
+  return (await db.all<TaskRow>(`${TASK_SELECT} WHERE t.archived_at IS NOT NULL ORDER BY t.archived_at DESC`)).map(toSummary)
 }
 
 export async function getTaskSummary(db: Db, id: number): Promise<TaskSummaryDTO> {
@@ -194,7 +214,8 @@ export async function recordEvent(
  */
 export async function positionFor(db: Db, status: TaskStatus, index: number | undefined, excludeId = 0): Promise<number> {
   const rows = await db.all<{ id: number; position: number }>(
-    "SELECT id, position FROM tasks WHERE status = ? AND id != ? ORDER BY position",
+    // Arquivadas não aparecem no quadro: não contam para o índice da coluna.
+    "SELECT id, position FROM tasks WHERE status = ? AND id != ? AND archived_at IS NULL ORDER BY position",
     status,
     excludeId
   )
@@ -269,7 +290,7 @@ const FIELD_COLUMNS = {
 } as const
 
 export async function updateTask(db: Db, actor: Actor, id: number, patch: UpdateTaskInput): Promise<TaskDetailDTO> {
-  const row = await getTaskRow(db, id)
+  const row = await getWritableTaskRow(db, id)
 
   await db.transaction(async (tx) => {
     const timestamp = now()
@@ -318,7 +339,7 @@ export async function updateTask(db: Db, actor: Actor, id: number, patch: Update
 }
 
 export async function moveTask(db: Db, actor: Actor, id: number, input: MoveTaskInput): Promise<TaskSummaryDTO> {
-  const row = await getTaskRow(db, id)
+  const row = await getWritableTaskRow(db, id)
   const reason = input.reason?.trim() || null
 
   const result = checkMove(
@@ -396,7 +417,7 @@ async function getChecklistRow(db: Db, taskId: number, itemId: number): Promise<
 const touchTask = (db: Db, taskId: number) => db.run("UPDATE tasks SET updated_at = ? WHERE id = ?", now(), taskId)
 
 export async function addChecklistItem(db: Db, taskId: number, input: CreateChecklistItemInput): Promise<ChecklistItemDTO> {
-  const task = await getTaskRow(db, taskId)
+  const task = await getWritableTaskRow(db, taskId)
   assertRule(checkChecklistEditable(task.status, await ruleOptions(db)))
 
   const itemId = await db.transaction(async (tx) => {
@@ -423,7 +444,7 @@ export async function updateChecklistItem(
   itemId: number,
   patch: UpdateChecklistItemInput
 ): Promise<ChecklistItemDTO> {
-  const task = await getTaskRow(db, taskId)
+  const task = await getWritableTaskRow(db, taskId)
   assertRule(checkChecklistEditable(task.status, await ruleOptions(db)))
   const item = await getChecklistRow(db, taskId, itemId)
 
@@ -447,8 +468,8 @@ export async function updateChecklistItem(
   return toChecklistItem(await getChecklistRow(db, taskId, itemId))
 }
 
-export async function removeChecklistItem(db: Db, actor: Actor, taskId: number, itemId: number) {
-  const task = await getTaskRow(db, taskId)
+export async function removeChecklistItem(db: Db, actor: Actor, taskId: number, itemId: number): Promise<ChecklistItemDTO> {
+  const task = await getWritableTaskRow(db, taskId)
   assertRule(checkChecklistEditable(task.status, await ruleOptions(db)))
   const item = await getChecklistRow(db, taskId, itemId)
   assertRule(checkChecklistItemRemoval(actor.role, item.is_from_template === 1))
@@ -457,4 +478,53 @@ export async function removeChecklistItem(db: Db, actor: Actor, taskId: number, 
     await tx.run("DELETE FROM checklist_items WHERE id = ?", itemId)
     await touchTask(tx, taskId)
   })
+  return toChecklistItem(item)
+}
+
+/* ───────────────────────── arquivar e excluir ───────────────────────── */
+
+export async function archiveTask(db: Db, actor: Actor, id: number): Promise<TaskSummaryDTO> {
+  const row = await getWritableTaskRow(db, id)
+  assertRule(checkArchive(actor, { createdById: row.created_by }))
+  await db.transaction(async (tx) => {
+    const timestamp = now()
+    await tx.run("UPDATE tasks SET archived_at = ?, archived_by = ?, updated_at = ? WHERE id = ?", timestamp, actor.id, timestamp, id)
+    await recordEvent(tx, { taskId: id, actorId: actor.id, type: "archived", at: timestamp })
+  })
+  return getTaskSummary(db, id)
+}
+
+/** Volta para o quadro, no fim da coluna em que estava. */
+export async function restoreTask(db: Db, actor: Actor, id: number): Promise<TaskSummaryDTO> {
+  const row = await getTaskRow(db, id)
+  if (row.archived_at === null) throw new HttpError(409, "invalid_transition", "Esta tarefa não está arquivada.")
+  assertRule(checkArchive(actor, { createdById: row.created_by }, "restore"))
+  await db.transaction(async (tx) => {
+    const timestamp = now()
+    await tx.run(
+      "UPDATE tasks SET archived_at = NULL, archived_by = NULL, position = ?, updated_at = ? WHERE id = ?",
+      await positionFor(tx, row.status, undefined, id),
+      timestamp,
+      id
+    )
+    await recordEvent(tx, { taskId: id, actorId: actor.id, type: "restored", at: timestamp })
+  })
+  return getTaskSummary(db, id)
+}
+
+/**
+ * Exclui de vez (só administrador, só arquivada). Apaga também checklist, comentários e o
+ * histórico da tarefa — a única exceção à regra de o histórico só receber inserções.
+ * Os filhos saem explicitamente porque o Turso não aplica ON DELETE CASCADE.
+ */
+export async function deleteTaskPermanently(db: Db, actor: { isAdmin: boolean }, id: number): Promise<TaskSummaryDTO> {
+  const row = await getTaskRow(db, id)
+  assertRule(checkPermanentDelete(actor, { archivedAt: row.archived_at }))
+  await db.transaction(async (tx) => {
+    await tx.run("DELETE FROM task_comments WHERE task_id = ?", id)
+    await tx.run("DELETE FROM task_events WHERE task_id = ?", id)
+    await tx.run("DELETE FROM checklist_items WHERE task_id = ?", id)
+    await tx.run("DELETE FROM tasks WHERE id = ?", id)
+  })
+  return toSummary(row)
 }

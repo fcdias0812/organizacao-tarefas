@@ -2,7 +2,7 @@ import { z } from "zod"
 
 import { REASON_MAX_LENGTH } from "./rules"
 import { CATEGORY_ICONS } from "./settings"
-import { AVATAR_COLORS, TASK_PRIORITIES, TASK_STATUSES, USER_ROLES } from "./types"
+import { AUDIT_AREAS, AVATAR_COLORS, TASK_PRIORITIES, TASK_STATUSES, USER_ROLES } from "./types"
 
 const title = z
   .string()
@@ -151,6 +151,18 @@ export const settingsSchema = z
   .partial()
   .refine((v) => Object.keys(v).length > 0, "Nada para atualizar.")
 
+/** Filtros da auditoria (query string): período em ISO, pessoa (id ou "system"), área e busca. */
+export const auditQuerySchema = z.object({
+  since: z.iso.datetime("Data inicial inválida.").optional(),
+  until: z.iso.datetime("Data final inválida.").optional(),
+  actor: z.union([z.literal("system"), z.coerce.number().int().positive()]).optional(),
+  area: z.enum(AUDIT_AREAS).optional(),
+  q: z.string().trim().max(100).optional(),
+  order: z.enum(["desc", "asc"]).default("desc"),
+  offset: z.coerce.number().int().min(0).default(0),
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+})
+
 export type LoginInput = z.infer<typeof loginSchema>
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>
 export type CreateTaskInput = z.infer<typeof createTaskSchema>
@@ -164,3 +176,4 @@ export type UpdateUserInput = z.infer<typeof updateUserSchema>
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>
 export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>
 export type SettingsInput = z.infer<typeof settingsSchema>
+export type AuditQuery = z.infer<typeof auditQuerySchema>

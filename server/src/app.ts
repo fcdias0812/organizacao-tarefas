@@ -2,13 +2,15 @@ import { existsSync } from "node:fs"
 import { join } from "node:path"
 import cookieParser from "cookie-parser"
 import express from "express"
+import { auditQuerySchema } from "@tarefas/shared"
 
 import { requireAuth } from "./auth/middleware"
 import type { Db } from "./db/connection"
-import { errorHandler, notFound, requireJson } from "./http/errors"
+import { errorHandler, notFound, parseBody, requireJson } from "./http/errors"
 import { adminRoutes } from "./routes/admin"
 import { authRoutes } from "./routes/auth"
 import { taskRoutes } from "./routes/tasks"
+import { listAudit } from "./services/audit"
 import { listCategories } from "./services/categories"
 import { getSettings } from "./services/settings"
 import { listUsers } from "./services/users"
@@ -55,6 +57,10 @@ export function createApp({ db, secureCookies = false, clientDist }: AppOptions)
   })
   api.get("/categories", async (_req, res) => {
     res.json({ categories: await listCategories(db) })
+  })
+  // Auditoria: todos veem tudo o que foi feito no sistema.
+  api.get("/audit", async (req, res) => {
+    res.json(await listAudit(db, parseBody(auditQuerySchema, req.query)))
   })
   api.use("/tasks", taskRoutes(db))
   api.use("/admin", adminRoutes(db))

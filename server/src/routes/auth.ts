@@ -6,6 +6,7 @@ import { createLoginLimiter } from "../auth/loginLimiter"
 import {
   createSession,
   deleteSession,
+  getSessionUser,
   hashPassword,
   hashToken,
   SESSION_COOKIE,
@@ -14,6 +15,7 @@ import {
 } from "../auth/sessions"
 import type { Db } from "../db/connection"
 import { HttpError, parseBody } from "../http/errors"
+import { recordAudit } from "../services/audit"
 import { toUserDTO } from "../services/users"
 
 export function authRoutes(db: Db, options: { secureCookies: boolean }) {
@@ -43,13 +45,18 @@ export function authRoutes(db: Db, options: { secureCookies: boolean }) {
     limiter.succeed(ip, email)
 
     const token = await createSession(db, user.id)
+    await recordAudit(db, { actorId: user.id, area: "access", action: "auth.login", summary: "entrou no sistema" })
     res.cookie(SESSION_COOKIE, token, { ...cookie, maxAge: SESSION_TTL_MS })
     res.json({ user: toUserDTO(user) })
   })
 
   router.post("/logout", async (req, res) => {
     const token = req.cookies?.[SESSION_COOKIE]
-    if (typeof token === "string") await deleteSession(db, token)
+    if (typeof token === "string") {
+      const user = await getSessionUser(db, token)
+      await deleteSession(db, token)
+      if (user) await recordAudit(db, { actorId: user.id, area: "access", action: "auth.logout", summary: "saiu do sistema" })
+    }
     res.clearCookie(SESSION_COOKIE, cookie)
     res.status(204).end()
   })
@@ -69,6 +76,12 @@ export function authRoutes(db: Db, options: { secureCookies: boolean }) {
     await db.run("UPDATE users SET password_hash = ? WHERE id = ?", passwordHash, me.id)
     const token = req.cookies?.[SESSION_COOKIE]
     await db.run("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?", me.id, hashToken(String(token)))
+    await recordAudit(db, {
+      actorId: me.id,
+      area: "access",
+      action: "auth.password_changed",
+      summary: "trocou a própria senha (as outras sessões foram encerradas)",
+    })
     res.status(204).end()
   })
 

@@ -1,5 +1,7 @@
 import { useRef, useState } from "react"
 import {
+  Archive,
+  ArchiveRestore,
   Ban,
   CalendarDays,
   Check,
@@ -10,10 +12,12 @@ import {
   RotateCcw,
   Send,
   Tag,
+  Trash2,
   Undo2,
   UserRound,
 } from "lucide-react"
 import {
+  checkArchive,
   checkChecklistEditable,
   isChecklistComplete,
   type CategoryKey,
@@ -22,6 +26,7 @@ import {
   type UpdateTaskInput,
   type UserDTO,
 } from "@tarefas/shared"
+import { toast } from "sonner"
 import { cn } from "cn"
 
 import { ReasonDialog, type ReasonKind } from "@/components/board/ReasonDialog"
@@ -46,6 +51,7 @@ import { useAppConfig } from "@/features/settings/appConfig"
 import { PRIORITY_ORDER } from "@/lib/domain"
 import { TaskChecklist } from "./TaskChecklist"
 import { TaskActivity } from "./TaskActivity"
+import { useArchiveActions } from "./useArchive"
 import { useTaskDetail, useUpdateTask } from "./useTaskDetail"
 
 interface TaskDrawerProps {
@@ -66,7 +72,7 @@ export function TaskDrawer({ taskId, me, users, onClose }: TaskDrawerProps) {
     <Sheet open={taskId !== null} onOpenChange={(open) => !open && onClose()}>
       <SheetContent className="gap-0 sm:max-w-xl" aria-describedby={undefined}>
         {detail.data ? (
-          <DrawerBody key={detail.data.id} task={detail.data} me={me} users={users} />
+          <DrawerBody key={detail.data.id} task={detail.data} me={me} users={users} onClose={onClose} />
         ) : detail.isError ? (
           <div className="grid flex-1 place-items-center p-10 text-center">
             <div className="space-y-1">
@@ -82,12 +88,27 @@ export function TaskDrawer({ taskId, me, users, onClose }: TaskDrawerProps) {
   )
 }
 
-function DrawerBody({ task, me, users }: { task: TaskDetailDTO; me: UserDTO; users: UserDTO[] }) {
+function DrawerBody({
+  task,
+  me,
+  users,
+  onClose,
+}: {
+  task: TaskDetailDTO
+  me: UserDTO
+  users: UserDTO[]
+  onClose: () => void
+}) {
   const update = useUpdateTask(task.id)
   const { move } = useMoveTask(me.role)
+  const archiveActions = useArchiveActions()
   const [reasonKind, setReasonKind] = useState<ReasonKind | null>(null)
   const [pendingCategory, setPendingCategory] = useState<CategoryKey | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [saved, flashSaved] = useFlash(2500)
+  const isArchived = task.archivedAt !== null
+  const canArchive = checkArchive(me, task).ok
+  const archivedBy = users.find((u) => u.id === task.archivedById)
 
   const save = (patch: UpdateTaskInput) => update.mutate(patch, { onSuccess: flashSaved })
   const creator = users.find((u) => u.id === task.createdById)
@@ -109,10 +130,31 @@ function DrawerBody({ task, me, users }: { task: TaskDetailDTO; me: UserDTO; use
           <StatusIcon status={task.status} className="size-3.5" />
           {config.statusLabel(task.status)}
         </span>
-        <SaveStatus pending={update.isPending} saved={saved} />
+        <div className="ml-auto flex items-center gap-2">
+          <SaveStatus pending={update.isPending} saved={saved} />
+          {!isArchived && canArchive && (
+            <Button
+              variant="ghost"
+              size="xs"
+              disabled={archiveActions.archive.isPending}
+              onClick={() =>
+                archiveActions.archive.mutate(task.id, {
+                  onSuccess: () =>
+                    toast.success("Tarefa arquivada", {
+                      description: "Saiu do quadro. Dá para restaurar em Arquivadas.",
+                      action: { label: "Desfazer", onClick: () => archiveActions.restore.mutate(task.id) },
+                    }),
+                })
+              }
+            >
+              <Archive /> Arquivar
+            </Button>
+          )}
+        </div>
       </div>
 
-      <div className="scroll-soft flex-1 space-y-7 overflow-y-auto px-7 pt-3 pb-8">
+      {/* Arquivada: tudo só para leitura até restaurar. */}
+      <fieldset disabled={isArchived} className="scroll-soft min-w-0 flex-1 space-y-7 overflow-y-auto px-7 pt-3 pb-8">
         <div className="space-y-1">
           <SheetTitle className="sr-only">{task.title}</SheetTitle>
           <EditableTitle key={task.title} value={task.title} onSave={(title) => save({ title })} />
@@ -122,6 +164,13 @@ function DrawerBody({ task, me, users }: { task: TaskDetailDTO; me: UserDTO; use
           </SheetDescription>
         </div>
 
+        {isArchived && (
+          <Notice tone="neutral" icon={<Archive />} title="Arquivada">
+            por {archivedBy?.name ?? "alguém"}{" "}
+            <span title={formatFullDateTime(task.archivedAt!)}>{formatRelative(task.archivedAt!)}</span>. Fica fora do
+            quadro e só para leitura; restaure para voltar a mexer nela.
+          </Notice>
+        )}
         {task.status === "blocked" && task.blockedReason && (
           <Notice tone="danger" icon={<Ban />} title="Bloqueada">
             {task.blockedReason}
@@ -193,15 +242,71 @@ function DrawerBody({ task, me, users }: { task: TaskDetailDTO; me: UserDTO; use
           <h3 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Atividade</h3>
           <TaskActivity task={task} users={users} me={me} />
         </section>
-      </div>
+      </fieldset>
 
-      <DrawerActions
-        task={task}
-        isManager={isManager}
-        reviewLabel={config.statusLabel("review")}
-        onMove={(status) => move({ task, status, index: 0 })}
-        onAskReason={setReasonKind}
-      />
+      {isArchived ? (
+        <div className="flex flex-wrap items-center gap-2 border-t border-hairline px-7 py-4">
+          <span className="mr-auto text-xs text-ink-3">Arquivada · fora do quadro</span>
+          {me.isAdmin && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-danger hover:bg-danger-soft hover:text-danger"
+              onClick={() => setConfirmDelete(true)}
+            >
+              <Trash2 /> Excluir de vez
+            </Button>
+          )}
+          {canArchive && (
+            <Button
+              variant="soft"
+              disabled={archiveActions.restore.isPending}
+              onClick={() =>
+                archiveActions.restore.mutate(task.id, { onSuccess: () => toast.success("Tarefa restaurada para o quadro") })
+              }
+            >
+              <ArchiveRestore /> Restaurar
+            </Button>
+          )}
+        </div>
+      ) : (
+        <DrawerActions
+          task={task}
+          isManager={isManager}
+          reviewLabel={config.statusLabel("review")}
+          onMove={(status) => move({ task, status, index: 0 })}
+          onAskReason={setReasonKind}
+        />
+      )}
+
+      <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Excluir de vez “{task.title}”?</DialogTitle>
+            <DialogDescription>
+              Apaga a tarefa com o checklist, os comentários e o histórico. Não dá para desfazer. A auditoria guarda
+              apenas o registro de que ela foi excluída, por quem e quando.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter showCloseButton>
+            <Button
+              variant="destructive"
+              disabled={archiveActions.remove.isPending}
+              onClick={() =>
+                archiveActions.remove.mutate(task.id, {
+                  onSuccess: () => {
+                    setConfirmDelete(false)
+                    onClose()
+                    toast.success("Tarefa excluída de vez")
+                  },
+                })
+              }
+            >
+              <Trash2 /> Excluir de vez
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ReasonDialog
         kind={reasonKind}
@@ -459,7 +564,7 @@ function Notice({
   title,
   children,
 }: {
-  tone: "danger" | "warning"
+  tone: "danger" | "warning" | "neutral"
   icon: React.ReactNode
   title: string
   children: React.ReactNode
@@ -468,12 +573,21 @@ function Notice({
     <div
       className={cn(
         "flex gap-2.5 rounded-2xl px-4 py-3 text-[13px] leading-relaxed [&>svg]:mt-0.5 [&>svg]:size-4 [&>svg]:shrink-0",
-        tone === "danger" ? "bg-danger-soft [&>svg]:text-danger" : "bg-warning-soft [&>svg]:text-warning"
+        tone === "danger"
+          ? "bg-danger-soft [&>svg]:text-danger"
+          : tone === "warning"
+            ? "bg-warning-soft [&>svg]:text-warning"
+            : "bg-surface-sunken [&>svg]:text-ink-3"
       )}
     >
       {icon}
       <p className="text-ink-2">
-        <span className={cn("font-semibold", tone === "danger" ? "text-danger" : "text-warning")}>{title}</span> ·{" "}
+        <span
+          className={cn("font-semibold", tone === "danger" ? "text-danger" : tone === "warning" ? "text-warning" : "text-ink")}
+        >
+          {title}
+        </span>{" "}
+        ·{" "}
         {children}
       </p>
     </div>

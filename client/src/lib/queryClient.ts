@@ -10,7 +10,9 @@ export const queryKeys = {
   adminUsers: ["admin", "users"] as const,
   adminCategories: ["admin", "categories"] as const,
   tasks: ["tasks"] as const,
+  archivedTasks: ["tasks", "archived"] as const,
   task: (id: number) => ["task", id] as const,
+  audit: ["audit"] as const,
 }
 
 export const queryClient = new QueryClient({

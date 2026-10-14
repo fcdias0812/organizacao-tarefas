@@ -180,3 +180,30 @@ export function checkChecklistItemRemoval(actorRole: UserRole, isFromTemplate: b
   if (!isFromTemplate || actorRole === "manager") return { ok: true }
   return deny("forbidden", "Itens do checklist padrão da categoria só podem ser removidos pelo gestor.")
 }
+
+/* ───────────────────────── arquivar e excluir ───────────────────────── */
+
+/** Arquivar ou restaurar: o gestor, ou quem criou a tarefa. */
+export function checkArchive(actor: Actor, task: { createdById: number }, action: "archive" | "restore" = "archive"): RuleResult {
+  if (actor.role === "manager" || actor.id === task.createdById) return { ok: true }
+  return deny(
+    "forbidden",
+    `Só o gestor ou quem criou a tarefa pode ${action === "archive" ? "arquivá-la" : "restaurá-la"}.`
+  )
+}
+
+/** Tarefa arquivada fica só para leitura até ser restaurada. */
+export function checkNotArchived(task: { archivedAt: string | null }): RuleResult {
+  if (task.archivedAt === null) return { ok: true }
+  return deny("invalid_transition", "Esta tarefa está arquivada. Restaure para fazer alterações.")
+}
+
+/**
+ * Excluir de vez apaga a tarefa com checklist, comentários e histórico, sem volta:
+ * só o administrador, e só tarefa já arquivada (dois passos evitam acidente).
+ */
+export function checkPermanentDelete(actor: { isAdmin: boolean }, task: { archivedAt: string | null }): RuleResult {
+  if (!actor.isAdmin) return deny("forbidden", "Só o administrador exclui tarefas de vez.")
+  if (task.archivedAt === null) return deny("invalid_transition", "Arquive a tarefa antes de excluir de vez.")
+  return { ok: true }
+}

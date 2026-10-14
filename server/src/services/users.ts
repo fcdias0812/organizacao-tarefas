@@ -171,3 +171,8 @@ export async function resetPasswordAsAdmin(
   })
   return temporaryPassword
 }
+
+/** Usuário como o administrador vê (inclui desativados). */
+export async function getAdminUser(db: Db, id: number): Promise<AdminUserDTO> {
+  return toAdminDTO(await getRow(db, id))
+}

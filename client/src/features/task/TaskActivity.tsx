@@ -1,5 +1,7 @@
 import { useState } from "react"
 import {
+  Archive,
+  ArchiveRestore,
   Ban,
   Check,
   CirclePlus,
@@ -41,6 +43,8 @@ const EVENT_STYLE: Partial<Record<TaskEventType, { icon: LucideIcon; className: 
   reopened: { icon: RotateCcw, className: "bg-brand-50 text-brand-600" },
   assigned: { icon: UserRound, className: "bg-surface-sunken text-ink-2" },
   updated: { icon: Pencil, className: "bg-surface-sunken text-ink-2" },
+  archived: { icon: Archive, className: "bg-surface-sunken text-ink-3" },
+  restored: { icon: ArchiveRestore, className: "bg-brand-50 text-brand-600" },
 }
 
 function joinList(items: string[]) {
@@ -90,6 +94,10 @@ function describe(
       const fields = Array.isArray(event.detail?.fields) ? (event.detail.fields as string[]) : []
       return `alterou ${joinList(fields.map((f) => FIELD_LABELS[f] ?? f))}`
     }
+    case "archived":
+      return "arquivou a tarefa"
+    case "restored":
+      return "restaurou a tarefa para o quadro"
   }
 }
 

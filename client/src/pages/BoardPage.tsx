@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Kbd } from "@/components/ui/kbd"
 import { useMe } from "@/features/auth/useAuth"
 import { BoardDnd } from "@/features/board/BoardDnd"
+import { ArchivedSheet } from "@/features/board/ArchivedSheet"
 import { DensityToggle } from "@/features/board/DensityToggle"
 import { FilterBar } from "@/features/board/FilterBar"
 import { useBoard } from "@/features/board/useBoardData"
@@ -99,7 +100,12 @@ export function BoardPage() {
             me={me}
             visibleCount={visibleIds?.size ?? board.tasks.length}
             searchRef={searchRef}
-            trailing={<DensityToggle value={density} onChange={setDensity} />}
+            trailing={
+              <div className="flex items-center gap-1">
+                <ArchivedSheet me={me} users={board.users} onOpenTask={openTask} />
+                <DensityToggle value={density} onChange={setDensity} />
+              </div>
+            }
           />
         )}
       </div>

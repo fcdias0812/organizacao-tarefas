@@ -144,8 +144,9 @@ Categoria com tarefas não pode ser excluída, só desativada (some das opções
 ## Como usar
 
 - **N** abre a criação rápida. Atalhos na mesma linha: `#infra` `!alta` `@juliana` e prazos como
-  `hoje`, `amanhã`, `sexta` ou `20/10`. **Enter cria e já abre a tarefa no painel**; Shift+Enter cria
-  e deixa o campo aberto para lançar a próxima.
+  `hoje`, `amanhã`, `sexta` ou `20/10`. Ao digitar `#`, `!` ou `@` aparece a lista de sugestões
+  (setas escolhem, Enter/Tab completam, Esc fecha a lista). **Enter cria e já abre a tarefa no painel**;
+  Shift+Enter cria e deixa o campo aberto para lançar a próxima.
 - **/** vai para a busca. Filtros por responsável, categoria e prioridade ficam na URL (dá para mandar o link).
 - **Arrastar e soltar** entre colunas. A coluna que aceita acende; a que recusa apaga e explica o motivo.
   Pelo teclado: foque um card, Espaço pega, setas movem, Espaço solta, Esc cancela.
@@ -153,6 +154,14 @@ Categoria com tarefas não pode ser excluída, só desativada (some das opções
   (movimentações e comentários de acompanhamento na mesma linha do tempo). A tarefa aberta fica na
   URL (`/?tarefa=12`). Comentários: qualquer pessoa escreve; só o autor edita; o autor ou um
   administrador exclui.
+- **Arquivar** (no topo do painel; gestor ou quem criou a tarefa): o card sai do quadro e fica só para
+  leitura, com o histórico guardado. O botão **Arquivadas**, ao lado dos filtros, lista as arquivadas
+  para abrir ou **Restaurar**. Com a tarefa arquivada, o **administrador** pode **Excluir de vez**
+  (apaga checklist, comentários e histórico, sem volta; a auditoria guarda o registro da exclusão).
+- **Auditoria** (menu do usuário; todos veem): tudo o que foi feito no sistema — tarefas, checklist,
+  comentários, entradas e saídas, usuários, categorias e configurações — com quem fez, quando e o que
+  mudou. Filtros por período, pessoa, área e busca; mais recentes ou mais antigas primeiro. Mudar só a
+  ordem de um card dentro da mesma coluna não é registrado. Senhas nunca aparecem.
 
 ## Regras de qualidade
 
@@ -194,8 +203,11 @@ Chamadas prontas para testar à mão: `server/requests.http` (extensão REST Cli
 | GET | `/settings` | Configurações gerais (pública: o login usa nome e cor) |
 | POST | `/auth/password` | Trocar a própria senha |
 | GET | `/users` · `/categories` | Pessoas e categorias (com checklist padrão) |
-| GET · POST | `/tasks` | Quadro / criar tarefa |
-| GET · PATCH | `/tasks/:id` | Detalhe (checklist + histórico) / editar |
+| GET · POST | `/tasks` | Quadro (só ativas) / criar tarefa |
+| GET | `/tasks/archived` | Tarefas arquivadas |
+| GET · PATCH · DELETE | `/tasks/:id` | Detalhe (checklist + histórico) / editar / excluir de vez (administrador, só arquivada) |
+| POST | `/tasks/:id/archive` · `/tasks/:id/restore` | Arquivar / restaurar (gestor ou quem criou) |
+| GET | `/audit` | Auditoria (`since`, `until`, `actor`, `area`, `q`, `order`, `offset`, `limit`) |
 | POST | `/tasks/:id/move` | Mudar de coluna ou posição (`status`, `index`, `reason`) |
 | POST | `/tasks/:id/checklist` | Adicionar item |
 | PATCH · DELETE | `/tasks/:id/checklist/:itemId` | Marcar, renomear ou remover item |
@@ -204,4 +216,4 @@ Chamadas prontas para testar à mão: `server/requests.http` (extensão REST Cli
 
 ## Fora da v1 (ideias para a v2)
 
-Tarefas recorrentes, painel de métricas, notificações, alerta de card parado e exclusão de tarefas.
+Tarefas recorrentes, painel de métricas, notificações e alerta de card parado.

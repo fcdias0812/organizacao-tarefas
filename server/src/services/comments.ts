@@ -1,7 +1,7 @@
-import type { CommentDTO, UserDTO } from "@tarefas/shared"
+import { checkNotArchived, type CommentDTO, type UserDTO } from "@tarefas/shared"
 
 import type { Db } from "../db/connection"
-import { HttpError, notFound } from "../http/errors"
+import { assertRule, HttpError, notFound } from "../http/errors"
 
 interface CommentRow {
   id: number
@@ -30,8 +30,15 @@ async function getRow(db: Db, taskId: number, id: number): Promise<CommentRow> {
   return row
 }
 
+/** A tarefa existe e não está arquivada (arquivada fica só para leitura). */
+async function ensureTaskWritable(db: Db, taskId: number) {
+  const task = await db.get<{ archived_at: string | null }>("SELECT archived_at FROM tasks WHERE id = ?", taskId)
+  if (!task) throw notFound("Tarefa não encontrada.")
+  assertRule(checkNotArchived({ archivedAt: task.archived_at }))
+}
+
 export async function addComment(db: Db, actor: UserDTO, taskId: number, body: string): Promise<CommentDTO> {
-  if (!(await db.get("SELECT 1 FROM tasks WHERE id = ?", taskId))) throw notFound("Tarefa não encontrada.")
+  await ensureTaskWritable(db, taskId)
   const now = new Date().toISOString()
   const result = await db.run(
     "INSERT INTO task_comments (task_id, author_id, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
@@ -46,6 +53,7 @@ export async function addComment(db: Db, actor: UserDTO, taskId: number, body: s
 
 /** Só quem escreveu edita o próprio comentário. */
 export async function updateComment(db: Db, actor: UserDTO, taskId: number, id: number, body: string): Promise<CommentDTO> {
+  await ensureTaskWritable(db, taskId)
   const row = await getRow(db, taskId, id)
   if (row.author_id !== actor.id) throw new HttpError(403, "forbidden", "Só quem escreveu pode editar o comentário.")
   await db.run("UPDATE task_comments SET body = ?, updated_at = ? WHERE id = ?", body, new Date().toISOString(), id)
@@ -53,10 +61,12 @@ export async function updateComment(db: Db, actor: UserDTO, taskId: number, id: 
 }
 
 /** Quem escreveu ou um administrador pode excluir. */
-export async function deleteComment(db: Db, actor: UserDTO, taskId: number, id: number) {
+export async function deleteComment(db: Db, actor: UserDTO, taskId: number, id: number): Promise<CommentDTO> {
+  await ensureTaskWritable(db, taskId)
   const row = await getRow(db, taskId, id)
   if (row.author_id !== actor.id && !actor.isAdmin) {
     throw new HttpError(403, "forbidden", "Só quem escreveu (ou um administrador) pode excluir o comentário.")
   }
   await db.run("DELETE FROM task_comments WHERE id = ?", id)
+  return toDTO(row)
 }
