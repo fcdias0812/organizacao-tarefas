@@ -126,8 +126,12 @@ export interface AuditContext {
   status: (status: TaskStatus) => string
   priority: (priority: TaskPriority) => string
   category: (key: string) => string
-  user: (id: number | null) => string
+  /** "Ana", "Ana e Bruno", "Ana, Bruno e Carla" ou "sem responsável". */
+  users: (ids: number[]) => string
 }
+
+const joinNames = (names: string[]) =>
+  names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} e ${names.at(-1)}`
 
 export async function auditContext(db: Db): Promise<AuditContext> {
   const [settings, categories, users] = await Promise.all([getSettings(db), listCategories(db), listAllUsers(db)])
@@ -136,13 +140,17 @@ export async function auditContext(db: Db): Promise<AuditContext> {
     status: (s) => settings.statusLabels[s],
     priority: (p) => settings.priorities[p].label,
     category: (key) => categories.find((c) => c.key === key)?.name ?? key,
-    user: (id) => (id === null ? "sem responsável" : (users.find((u) => u.id === id)?.name ?? `usuário ${id}`)),
+    users: (ids) =>
+      ids.length === 0 ? "sem responsável" : joinNames(ids.map((id) => users.find((u) => u.id === id)?.name ?? `usuário ${id}`)),
   }
 }
 
-/** Resumo de uma tarefa nova: categoria, prioridade, responsável e prazo. */
+const responsibles = (ids: number[], ctx: AuditContext) =>
+  ids.length === 0 ? "sem responsável" : `${ids.length === 1 ? "responsável" : "responsáveis"} ${ctx.users(ids)}`
+
+/** Resumo de uma tarefa nova: categoria, prioridade, responsáveis e prazo. */
 export function describeNewTask(task: TaskSummaryDTO, ctx: AuditContext) {
-  const parts = [ctx.category(task.category), `prioridade ${ctx.priority(task.priority)}`, `responsável ${ctx.user(task.assigneeId)}`]
+  const parts = [ctx.category(task.category), `prioridade ${ctx.priority(task.priority)}`, responsibles(task.assigneeIds, ctx)]
   if (task.dueDate) parts.push(`prazo ${formatDay(task.dueDate)}`)
   return parts.join(", ")
 }
@@ -155,9 +163,9 @@ export function describeTaskChanges(before: TaskSummaryDTO, after: TaskSummaryDT
   if (before.priority !== after.priority) parts.push(`prioridade (${arrow(ctx.priority(before.priority), ctx.priority(after.priority))})`)
   if (before.dueDate !== after.dueDate) parts.push(`prazo (${arrow(formatDay(before.dueDate), formatDay(after.dueDate))})`)
   if (before.category !== after.category) parts.push(`categoria (${arrow(ctx.category(before.category), ctx.category(after.category))})`)
-  if (before.assigneeId !== after.assigneeId) {
-    parts.push(`responsável (${arrow(ctx.user(before.assigneeId), ctx.user(after.assigneeId))})`)
-  }
+  const sameAssignees =
+    before.assigneeIds.length === after.assigneeIds.length && before.assigneeIds.every((id) => after.assigneeIds.includes(id))
+  if (!sameAssignees) parts.push(`responsáveis (${arrow(ctx.users(before.assigneeIds), ctx.users(after.assigneeIds))})`)
   return parts
 }
 

@@ -74,7 +74,8 @@ export interface TaskSummaryDTO {
   priority: TaskPriority
   category: CategoryKey
   dueDate: string | null
-  assigneeId: number | null
+  /** Responsáveis, na ordem em que foram incluídos (pode ser vazio). */
+  assigneeIds: number[]
   createdById: number
   checklistDone: number
   checklistTotal: number

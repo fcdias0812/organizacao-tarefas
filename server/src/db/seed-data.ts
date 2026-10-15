@@ -37,7 +37,10 @@ export interface SeedTask {
   status: TaskStatus
   /** Prazo em dias a partir de hoje (negativo = vencido). */
   due: number | null
+  /** Responsável principal (faz o trabalho no histórico de exemplo). */
   assignee: SeedUserKey | null
+  /** Outros responsáveis, além do principal. */
+  coAssignees?: SeedUserKey[]
   createdBy: SeedUserKey
   createdDaysAgo: number
   /** Quantos itens do checklist já estão marcados. Revisão e Concluído: todos. */
@@ -173,6 +176,7 @@ export const SEED_TASKS: SeedTask[] = [
     status: "in_progress",
     due: 4,
     assignee: "juliana",
+    coAssignees: ["rafael"],
     createdBy: "marcos",
     createdDaysAgo: 8,
     checked: 4,

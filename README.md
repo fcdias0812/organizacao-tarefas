@@ -143,11 +143,12 @@ Categoria com tarefas não pode ser excluída, só desativada (some das opções
 
 ## Como usar
 
-- **N** abre a criação rápida. Atalhos na mesma linha: `#infra` `!alta` `@juliana` e prazos como
-  `hoje`, `amanhã`, `sexta` ou `20/10`. Ao digitar `#`, `!` ou `@` aparece a lista de sugestões
+- **N** abre a criação rápida. Atalhos na mesma linha: `#infra` `!alta` `@juliana` (vários `@` = vários
+  responsáveis) e prazos como `hoje`, `amanhã`, `sexta` ou `20/10`. Ao digitar `#`, `!` ou `@` aparece a lista de sugestões
   (setas escolhem, Enter/Tab completam, Esc fecha a lista). **Enter cria e já abre a tarefa no painel**;
   Shift+Enter cria e deixa o campo aberto para lançar a próxima.
-- **/** vai para a busca. Filtros por responsável, categoria e prioridade ficam na URL (dá para mandar o link).
+- **/** vai para a busca. Filtros por responsável (a tarefa aparece se qualquer um dos responsáveis estiver
+  no filtro), categoria e prioridade ficam na URL (dá para mandar o link).
 - **Arrastar e soltar** entre colunas. A coluna que aceita acende; a que recusa apaga e explica o motivo.
   Pelo teclado: foque um card, Espaço pega, setas movem, Espaço solta, Esc cancela.
 - **Clique (ou Enter) num card** abre o painel lateral: editar, checklist, ações e a **Atividade**
@@ -171,7 +172,8 @@ Categoria com tarefas não pode ser excluída, só desativada (some das opções
 - Devolver mantém o checklist marcado; o motivo fica no card até ele voltar para a Revisão.
 - **Bloqueado** exige motivo. Reabrir um card concluído é só com o Gestor.
 - O checklist fica travado em Revisão e Concluído.
-- Executor só atribui tarefas a si mesmo e não remove itens do checklist padrão.
+- Uma tarefa pode ter **um ou mais responsáveis** (ou nenhum). O gestor define quem quiser; o executor só
+  se inclui ou se retira e não deixa a tarefa sem ninguém. O executor não remove itens do checklist padrão.
 
 ## Estrutura
 

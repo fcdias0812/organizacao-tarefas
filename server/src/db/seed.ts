@@ -80,7 +80,7 @@ async function seed(db: Db, reset: boolean) {
 
   await db.transaction(async (tx) => {
     if (reset) {
-      await tx.exec("DELETE FROM task_comments; DELETE FROM task_events; DELETE FROM checklist_items; DELETE FROM tasks;")
+      await tx.exec("DELETE FROM task_comments; DELETE FROM task_events; DELETE FROM checklist_items; DELETE FROM task_assignees; DELETE FROM tasks;")
       await tx.run(
         `DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE email IN (${placeholders}))`,
         ...demoEmails
@@ -119,10 +119,10 @@ async function seed(db: Db, reset: boolean) {
 
       const categoryId = await getCategoryId(tx, task.category)
       const result = await tx.run(
-        `INSERT INTO tasks (title, description, status, position, priority, due_date, category_id, assignee_id,
+        `INSERT INTO tasks (title, description, status, position, priority, due_date, category_id,
                             created_by, blocked_reason, blocked_from_status, last_return_reason,
                             created_at, updated_at, completed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         task.title,
         task.description,
         task.status,
@@ -130,7 +130,6 @@ async function seed(db: Db, reset: boolean) {
         task.priority,
         task.due === null ? null : daysFromToday(task.due),
         categoryId,
-        task.assignee ? userIds[task.assignee] : null,
         userIds[task.createdBy],
         task.blockedReason ?? null,
         task.status === "blocked" ? "in_progress" : null,
@@ -140,6 +139,10 @@ async function seed(db: Db, reset: boolean) {
         task.status === "done" ? lastAt : null
       )
       const taskId = result.lastInsertRowid
+      const assigneeIds = [task.assignee, ...(task.coAssignees ?? [])].filter((k) => k !== null).map((k) => userIds[k])
+      for (const userId of assigneeIds) {
+        await tx.run("INSERT INTO task_assignees (task_id, user_id, added_at) VALUES (?, ?, ?)", taskId, userId, stamp(0))
+      }
 
       const labels = [...(await getTemplate(tx, categoryId)), ...(task.extraItems ?? [])]
       const allChecked = task.status === "review" || task.status === "done"
@@ -169,7 +172,7 @@ async function seed(db: Db, reset: boolean) {
           from: step.from,
           to: step.to,
           reason: step.reason ?? null,
-          detail: step.type === "created" ? { assigneeId: task.assignee ? userIds[task.assignee] : null } : null,
+          detail: step.type === "created" ? { assigneeIds } : null,
           at: stamp(k),
         })
       }

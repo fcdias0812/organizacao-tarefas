@@ -43,7 +43,6 @@ interface TaskRow {
   due_date: string | null
   category_key: CategoryKey
   category_id: number
-  assignee_id: number | null
   created_by: number
   blocked_reason: string | null
   blocked_from_status: TaskStatus | null
@@ -66,7 +65,7 @@ const TASK_SELECT = `
   FROM tasks t
   JOIN categories c ON c.id = t.category_id`
 
-function toSummary(row: TaskRow): TaskSummaryDTO {
+function toSummary(row: TaskRow, assigneeIds: number[]): TaskSummaryDTO {
   return {
     id: row.id,
     title: row.title,
@@ -76,7 +75,7 @@ function toSummary(row: TaskRow): TaskSummaryDTO {
     priority: row.priority,
     category: row.category_key,
     dueDate: row.due_date,
-    assigneeId: row.assignee_id,
+    assigneeIds,
     createdById: row.created_by,
     checklistDone: row.checklist_done,
     checklistTotal: row.checklist_total,
@@ -104,18 +103,36 @@ async function getWritableTaskRow(db: Db, id: number): Promise<TaskRow> {
   return row
 }
 
+/** Responsáveis de cada tarefa (tabela task_assignees), na ordem em que foram incluídos. */
+async function assigneesOf(db: Db, taskIds: number[]): Promise<Map<number, number[]>> {
+  const byTask = new Map<number, number[]>()
+  if (taskIds.length === 0) return byTask
+  const rows = await db.all<{ task_id: number; user_id: number }>(
+    `SELECT task_id, user_id FROM task_assignees WHERE task_id IN (${taskIds.map(() => "?").join(", ")}) ORDER BY rowid`,
+    ...taskIds
+  )
+  for (const r of rows) byTask.set(r.task_id, [...(byTask.get(r.task_id) ?? []), r.user_id])
+  return byTask
+}
+
+async function toSummaries(db: Db, rows: TaskRow[]): Promise<TaskSummaryDTO[]> {
+  const assignees = await assigneesOf(db, rows.map((r) => r.id))
+  return rows.map((r) => toSummary(r, assignees.get(r.id) ?? []))
+}
+
 /** Quadro: só as tarefas ativas. */
 export async function listTasks(db: Db): Promise<TaskSummaryDTO[]> {
-  return (await db.all<TaskRow>(`${TASK_SELECT} WHERE t.archived_at IS NULL ORDER BY t.status, t.position`)).map(toSummary)
+  return toSummaries(db, await db.all<TaskRow>(`${TASK_SELECT} WHERE t.archived_at IS NULL ORDER BY t.status, t.position`))
 }
 
 /** Arquivadas, das mais recentes para as mais antigas. */
 export async function listArchivedTasks(db: Db): Promise<TaskSummaryDTO[]> {
-  return (await db.all<TaskRow>(`${TASK_SELECT} WHERE t.archived_at IS NOT NULL ORDER BY t.archived_at DESC`)).map(toSummary)
+  return toSummaries(db, await db.all<TaskRow>(`${TASK_SELECT} WHERE t.archived_at IS NOT NULL ORDER BY t.archived_at DESC`))
 }
 
 export async function getTaskSummary(db: Db, id: number): Promise<TaskSummaryDTO> {
-  return toSummary(await getTaskRow(db, id))
+  const [summary] = await toSummaries(db, [await getTaskRow(db, id)])
+  return summary
 }
 
 interface ChecklistRow {
@@ -162,15 +179,15 @@ const toEvent = (r: EventRow): TaskEventDTO => ({
 })
 
 export async function getTaskDetail(db: Db, id: number): Promise<TaskDetailDTO> {
-  const row = await getTaskRow(db, id)
-  const [checklist, events, comments] = await Promise.all([
+  const [summary, checklist, events, comments] = await Promise.all([
+    getTaskSummary(db, id),
     db.all<ChecklistRow>("SELECT * FROM checklist_items WHERE task_id = ? ORDER BY position, id", id),
     db.all<EventRow>("SELECT * FROM task_events WHERE task_id = ? ORDER BY created_at, id", id),
     listComments(db, id),
   ])
 
   return {
-    ...toSummary(row),
+    ...summary,
     checklist: checklist.map(toChecklistItem),
     events: events.map(toEvent),
     comments,
@@ -231,12 +248,24 @@ export async function positionFor(db: Db, status: TaskStatus, index: number | un
   return positionFor(db, status, index, excludeId)
 }
 
-async function ensureAssignable(db: Db, actor: Actor, assigneeId: number | null) {
-  assertRule(checkAssign(actor, assigneeId))
-  if (assigneeId !== null && !(await findUserById(db, assigneeId))) {
-    throw new HttpError(422, "validation_error", "Responsável não encontrado.")
+async function ensureAssignable(db: Db, actor: Actor, current: number[], next: number[]) {
+  assertRule(checkAssign(actor, current, next))
+  for (const id of next.filter((n) => !current.includes(n))) {
+    if (!(await findUserById(db, id))) throw new HttpError(422, "validation_error", "Responsável não encontrado.")
   }
 }
+
+/** Troca os responsáveis: tira quem saiu e inclui quem entrou (quem continua mantém a ordem). */
+async function setAssignees(db: Db, taskId: number, current: number[], next: number[], at: string) {
+  for (const id of current.filter((n) => !next.includes(n))) {
+    await db.run("DELETE FROM task_assignees WHERE task_id = ? AND user_id = ?", taskId, id)
+  }
+  for (const id of next.filter((n) => !current.includes(n))) {
+    await db.run("INSERT INTO task_assignees (task_id, user_id, added_at) VALUES (?, ?, ?)", taskId, id, at)
+  }
+}
+
+const sameMembers = (a: number[], b: number[]) => a.length === b.length && a.every((id) => b.includes(id))
 
 async function insertTemplateItems(db: Db, taskId: number, categoryId: number, startPosition = 1) {
   for (const [k, label] of (await getTemplate(db, categoryId)).entries()) {
@@ -252,30 +281,30 @@ async function insertTemplateItems(db: Db, taskId: number, categoryId: number, s
 /* ───────────────────────── escrita ───────────────────────── */
 
 export async function createTask(db: Db, actor: Actor, input: CreateTaskInput): Promise<TaskDetailDTO> {
-  const assigneeId = input.assigneeId === undefined ? actor.id : input.assigneeId
-  await ensureAssignable(db, actor, assigneeId)
+  const assigneeIds = input.assigneeIds ?? [actor.id]
+  await ensureAssignable(db, actor, [], assigneeIds)
 
   const id = await db.transaction(async (tx) => {
     const categoryId = await getCategoryId(tx, input.category, { mustBeActive: true })
     const timestamp = now()
     const result = await tx.run(
       `INSERT INTO tasks (title, description, status, position, priority, due_date, category_id,
-                          assignee_id, created_by, created_at, updated_at)
-       VALUES (?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?, ?)`,
+                          created_by, created_at, updated_at)
+       VALUES (?, ?, 'todo', ?, ?, ?, ?, ?, ?, ?)`,
       input.title,
       input.description,
       await positionFor(tx, "todo", 0),
       input.priority,
       input.dueDate,
       categoryId,
-      assigneeId,
       actor.id,
       timestamp,
       timestamp
     )
     const taskId = result.lastInsertRowid
+    await setAssignees(tx, taskId, [], assigneeIds, timestamp)
     await insertTemplateItems(tx, taskId, categoryId)
-    await recordEvent(tx, { taskId, actorId: actor.id, type: "created", to: "todo", detail: { assigneeId }, at: timestamp })
+    await recordEvent(tx, { taskId, actorId: actor.id, type: "created", to: "todo", detail: { assigneeIds }, at: timestamp })
     return taskId
   })
 
@@ -291,6 +320,7 @@ const FIELD_COLUMNS = {
 
 export async function updateTask(db: Db, actor: Actor, id: number, patch: UpdateTaskInput): Promise<TaskDetailDTO> {
   const row = await getWritableTaskRow(db, id)
+  const currentAssignees = (await assigneesOf(db, [id])).get(id) ?? []
 
   await db.transaction(async (tx) => {
     const timestamp = now()
@@ -317,14 +347,14 @@ export async function updateTask(db: Db, actor: Actor, id: number, patch: Update
       changed.push("category")
     }
 
-    if (patch.assigneeId !== undefined && patch.assigneeId !== row.assignee_id) {
-      await ensureAssignable(tx, actor, patch.assigneeId)
-      await tx.run("UPDATE tasks SET assignee_id = ? WHERE id = ?", patch.assigneeId, id)
+    if (patch.assigneeIds !== undefined && !sameMembers(patch.assigneeIds, currentAssignees)) {
+      await ensureAssignable(tx, actor, currentAssignees, patch.assigneeIds)
+      await setAssignees(tx, id, currentAssignees, patch.assigneeIds, timestamp)
       await recordEvent(tx, {
         taskId: id,
         actorId: actor.id,
         type: "assigned",
-        detail: { from: row.assignee_id, to: patch.assigneeId },
+        detail: { from: currentAssignees, to: patch.assigneeIds },
         at: timestamp,
       })
     }
@@ -518,13 +548,14 @@ export async function restoreTask(db: Db, actor: Actor, id: number): Promise<Tas
  * Os filhos saem explicitamente porque o Turso não aplica ON DELETE CASCADE.
  */
 export async function deleteTaskPermanently(db: Db, actor: { isAdmin: boolean }, id: number): Promise<TaskSummaryDTO> {
-  const row = await getTaskRow(db, id)
-  assertRule(checkPermanentDelete(actor, { archivedAt: row.archived_at }))
+  const summary = await getTaskSummary(db, id)
+  assertRule(checkPermanentDelete(actor, summary))
   await db.transaction(async (tx) => {
     await tx.run("DELETE FROM task_comments WHERE task_id = ?", id)
     await tx.run("DELETE FROM task_events WHERE task_id = ?", id)
     await tx.run("DELETE FROM checklist_items WHERE task_id = ?", id)
+    await tx.run("DELETE FROM task_assignees WHERE task_id = ?", id)
     await tx.run("DELETE FROM tasks WHERE id = ?", id)
   })
-  return toSummary(row)
+  return summary
 }

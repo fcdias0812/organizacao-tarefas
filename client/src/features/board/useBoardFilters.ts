@@ -84,7 +84,11 @@ export function filterTasks(tasks: TaskSummaryDTO[], filters: BoardFilters, acti
   return new Set(
     tasks
       .filter((t) => {
-        if (filters.assignees.length && !filters.assignees.includes(t.assigneeId ?? "none")) return false
+        // Responsável: basta um dos responsáveis da tarefa estar no filtro ("none" = sem ninguém).
+        if (filters.assignees.length) {
+          const matches = t.assigneeIds.length === 0 ? filters.assignees.includes("none") : t.assigneeIds.some((id) => filters.assignees.includes(id))
+          if (!matches) return false
+        }
         if (filters.categories.length && !filters.categories.includes(t.category)) return false
         if (filters.priorities.length && !filters.priorities.includes(t.priority)) return false
         if (terms.length) {

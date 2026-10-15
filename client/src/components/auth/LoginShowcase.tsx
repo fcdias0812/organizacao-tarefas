@@ -18,17 +18,17 @@ function buildColumns(today: Date): { status: TaskStatus; className?: string; ca
     {
       status: "todo",
       cards: [
-        { id: 1, title: "Cotação de 5 notebooks para o comercial", status: "todo", priority: "medium", category: "purchase", dueDate: due(9), assignee: marcos, checklistDone: 1, checklistTotal: 5 },
-        { id: 2, title: "Trocar fonte do switch do 2º andar", status: "todo", priority: "high", category: "infra", dueDate: due(1), assignee: juliana, checklistDone: 0, checklistTotal: 4 },
-        { id: 3, title: "Atualizar o inventário de ativos", status: "todo", priority: "low", category: "routine", dueDate: due(12), assignee: null, checklistDone: 0, checklistTotal: 3 },
+        { id: 1, title: "Cotação de 5 notebooks para o comercial", status: "todo", priority: "medium", category: "purchase", dueDate: due(9), assignees: [marcos], checklistDone: 1, checklistTotal: 5 },
+        { id: 2, title: "Trocar fonte do switch do 2º andar", status: "todo", priority: "high", category: "infra", dueDate: due(1), assignees: [juliana], checklistDone: 0, checklistTotal: 4 },
+        { id: 3, title: "Atualizar o inventário de ativos", status: "todo", priority: "low", category: "routine", dueDate: due(12), assignees: [], checklistDone: 0, checklistTotal: 3 },
       ],
     },
     {
       status: "in_progress",
       cards: [
-        { id: 4, title: "Renovar certificado SSL do portal", status: "in_progress", priority: "urgent", category: "infra", dueDate: due(1), assignee: rafael, checklistDone: 3, checklistTotal: 4 },
-        { id: 5, title: "Implantar MFA no Microsoft 365", status: "in_progress", priority: "high", category: "project", dueDate: due(10), assignee: rafael, checklistDone: 2, checklistTotal: 4 },
-        { id: 6, title: "Padronizar imagem do Windows 11", status: "in_progress", priority: "medium", category: "project", dueDate: due(20), assignee: juliana, checklistDone: 1, checklistTotal: 4 },
+        { id: 4, title: "Renovar certificado SSL do portal", status: "in_progress", priority: "urgent", category: "infra", dueDate: due(1), assignees: [rafael], checklistDone: 3, checklistTotal: 4 },
+        { id: 5, title: "Implantar MFA no Microsoft 365", status: "in_progress", priority: "high", category: "project", dueDate: due(10), assignees: [rafael], checklistDone: 2, checklistTotal: 4 },
+        { id: 6, title: "Padronizar imagem do Windows 11", status: "in_progress", priority: "medium", category: "project", dueDate: due(20), assignees: [juliana], checklistDone: 1, checklistTotal: 4 },
       ],
     },
     {
@@ -36,8 +36,8 @@ function buildColumns(today: Date): { status: TaskStatus; className?: string; ca
       // Terceira coluna só aparece quando há espaço de sobra.
       className: "hidden 2xl:flex",
       cards: [
-        { id: 7, title: "Configurar a impressora nova da recepção", status: "review", priority: "medium", category: "ticket", dueDate: due(5), assignee: juliana, checklistDone: 4, checklistTotal: 4 },
-        { id: 8, title: "Substituir o nobreak da sala de servidores", status: "review", priority: "high", category: "infra", dueDate: due(2), assignee: rafael, checklistDone: 4, checklistTotal: 4 },
+        { id: 7, title: "Configurar a impressora nova da recepção", status: "review", priority: "medium", category: "ticket", dueDate: due(5), assignees: [juliana], checklistDone: 4, checklistTotal: 4 },
+        { id: 8, title: "Substituir o nobreak da sala de servidores", status: "review", priority: "high", category: "infra", dueDate: due(2), assignees: [rafael], checklistDone: 4, checklistTotal: 4 },
       ],
     },
   ]

@@ -158,11 +158,17 @@ export function positionBetween(sortedPositions: readonly number[], index?: numb
   return next - prev > 1e-6 ? (prev + next) / 2 : null
 }
 
-/** Gestor atribui para qualquer pessoa; executor só para si mesmo. */
-export function checkAssign(actor: Actor, assigneeId: number | null): RuleResult {
+/**
+ * Responsáveis (uma tarefa pode ter vários). Gestor define quem quiser, inclusive ninguém;
+ * executor só se inclui ou se retira, e não deixa a tarefa sem responsável.
+ * Na criação, `current` é a lista vazia.
+ */
+export function checkAssign(actor: Actor, current: readonly number[], next: readonly number[]): RuleResult {
   if (actor.role === "manager") return { ok: true }
-  if (assigneeId === actor.id) return { ok: true }
-  return deny("forbidden", "Só o gestor atribui tarefas para outras pessoas.")
+  const changed = [...next.filter((id) => !current.includes(id)), ...current.filter((id) => !next.includes(id))]
+  if (changed.some((id) => id !== actor.id)) return deny("forbidden", "Só o gestor atribui tarefas para outras pessoas.")
+  if (next.length === 0) return deny("forbidden", "Só o gestor deixa uma tarefa sem responsável.")
+  return { ok: true }
 }
 
 export function checkChecklistEditable(status: TaskStatus, options: RuleOptions = DEFAULT_OPTIONS): RuleResult {

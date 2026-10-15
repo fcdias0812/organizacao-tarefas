@@ -33,6 +33,8 @@ Visão geral, comandos e regras de negócio: ver `README.md`.
   na rota, depois que a ação deu certo. Ação nova = registro novo. Senha nunca entra no texto.
 - Tarefa arquivada (`archived_at`) fica fora do quadro e só para leitura (`checkNotArchived`); não conta
   para a posição na coluna.
+- Responsáveis: uma tarefa tem **vários** (`assigneeIds`, tabela `task_assignees`, ordem de inclusão). A coluna
+  antiga `tasks.assignee_id` ficou sem uso (não apagar, não voltar a usar). Regra em `checkAssign(actor, atuais, novos)`.
 
 ## Design
 

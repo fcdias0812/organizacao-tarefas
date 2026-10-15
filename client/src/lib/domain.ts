@@ -20,7 +20,8 @@ export interface TaskCardData {
   priority: TaskPriority
   category: CategoryKey
   dueDate: string | null // AAAA-MM-DD
-  assignee: User | null
+  /** Responsáveis, na ordem em que foram incluídos (pode ser vazio). */
+  assignees: User[]
   checklistDone: number
   checklistTotal: number
   blockedReason?: string | null
@@ -62,4 +63,9 @@ export const ROLE_LABEL: Record<UserRole, string> = {
 
 export function profileLabel(user: { role: UserRole; isAdmin?: boolean }): string {
   return user.isAdmin ? "Administrador" : ROLE_LABEL[user.role]
+}
+
+/** "Ana", "Ana e Bruno", "Ana, Bruno e Carla". */
+export function joinNames(names: string[]): string {
+  return names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} e ${names.at(-1)}`
 }

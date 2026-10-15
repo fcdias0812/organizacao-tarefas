@@ -26,9 +26,16 @@ describe("parseQuickTask", () => {
     assert.equal(r.title, "Trocar toner da impressora do RH")
     assert.equal(r.category, "infra")
     assert.equal(r.priority, "high")
-    assert.equal(r.assigneeId, 3)
+    assert.deepEqual(r.assigneeIds, [3])
     assert.equal(r.dueDate, "2026-10-14")
     assert.deepEqual(r.tokens, ["#infra", "!alta", "@juliana", "amanhã"])
+  })
+
+  it("vários @ viram vários responsáveis, sem repetir", () => {
+    const r = parse("Migrar e-mails @juliana @rafael @jul")
+    assert.equal(r.title, "Migrar e-mails")
+    assert.deepEqual(r.assigneeIds, [3, 2])
+    assert.deepEqual(r.tokens, ["@juliana", "@rafael", "@jul"])
   })
 
   it("só título, sem atalhos", () => {
@@ -40,7 +47,7 @@ describe("parseQuickTask", () => {
     const r = parse("Cotação #COMP !urg @RAF")
     assert.equal(r.category, "purchase")
     assert.equal(r.priority, "urgent")
-    assert.equal(r.assigneeId, 2)
+    assert.deepEqual(r.assigneeIds, [2])
     assert.equal(parse("x !média").priority, "medium")
   })
 
@@ -130,6 +137,6 @@ describe("quickSuggestions", () => {
   it("o atalho sugerido é reconhecido pelo parseQuickTask", () => {
     for (const s of at("x #")!.items) assert.equal(parseQuickTask(`x ${s.token}`, opts).category, s.value)
     for (const s of at("x !")!.items) assert.equal(parseQuickTask(`x ${s.token}`, opts).priority, s.value)
-    for (const s of at("x @")!.items) assert.equal(String(parseQuickTask(`x ${s.token}`, opts).assigneeId), s.value)
+    for (const s of at("x @")!.items) assert.equal(String(parseQuickTask(`x ${s.token}`, opts).assigneeIds?.[0]), s.value)
   })
 })

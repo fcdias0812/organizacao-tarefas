@@ -12,6 +12,11 @@ const title = z
 
 const dueDate = z.iso.date("Prazo inválido. Use o formato AAAA-MM-DD.").nullable()
 const userId = z.number().int().positive()
+/** Responsáveis: sem repetição, na ordem informada. */
+const assigneeIds = z
+  .array(userId)
+  .max(20, "No máximo 20 responsáveis.")
+  .transform((ids) => [...new Set(ids)])
 const categoryKey = z.string().trim().min(1, "Escolha uma categoria.").max(40)
 const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use uma cor no formato #RRGGBB.")
 
@@ -36,8 +41,8 @@ export const createTaskSchema = z.object({
   category: categoryKey,
   priority: z.enum(TASK_PRIORITIES).optional().default("medium"),
   dueDate: dueDate.optional().default(null),
-  /** Omitido = quem está criando. */
-  assigneeId: userId.nullable().optional(),
+  /** Omitido = só quem está criando. */
+  assigneeIds: assigneeIds.optional(),
 })
 
 export const updateTaskSchema = z
@@ -47,7 +52,7 @@ export const updateTaskSchema = z
     category: categoryKey,
     priority: z.enum(TASK_PRIORITIES),
     dueDate,
-    assigneeId: userId.nullable(),
+    assigneeIds,
   })
   .partial()
   .refine((v) => Object.keys(v).length > 0, "Nada para atualizar.")

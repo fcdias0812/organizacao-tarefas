@@ -29,7 +29,7 @@ export function toCardData(task: TaskSummaryDTO, usersById: Map<number, UserDTO>
     priority: task.priority,
     category: task.category,
     dueDate: task.dueDate,
-    assignee: task.assigneeId ? (usersById.get(task.assigneeId) ?? null) : null,
+    assignees: task.assigneeIds.map((id) => usersById.get(id)).filter((u): u is UserDTO => u !== undefined),
     checklistDone: task.checklistDone,
     checklistTotal: task.checklistTotal,
     blockedReason: task.blockedReason,

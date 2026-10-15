@@ -114,15 +114,28 @@ describe("checkMove", () => {
 })
 
 describe("checkAssign", () => {
-  it("gestor atribui para qualquer um", () => {
-    assert.equal(checkAssign({ id: 1, role: "manager" }, 3).ok, true)
-    assert.equal(checkAssign({ id: 1, role: "manager" }, null).ok, true)
+  const manager = { id: 1, role: "manager" as const }
+  const executor = { id: 3, role: "executor" as const }
+
+  it("gestor define quem quiser, inclusive ninguém", () => {
+    assert.equal(checkAssign(manager, [], [2, 3]).ok, true)
+    assert.equal(checkAssign(manager, [2, 3], []).ok, true)
   })
 
-  it("executor só atribui para si", () => {
-    assert.equal(checkAssign({ id: 3, role: "executor" }, 3).ok, true)
-    assert.equal(checkAssign({ id: 3, role: "executor" }, 1).ok, false)
-    assert.equal(checkAssign({ id: 3, role: "executor" }, null).ok, false)
+  it("executor só se inclui ou se retira", () => {
+    assert.equal(checkAssign(executor, [], [3]).ok, true, "cria para si")
+    assert.equal(checkAssign(executor, [2], [2, 3]).ok, true, "entra numa tarefa de outra pessoa")
+    assert.equal(checkAssign(executor, [2, 3], [2]).ok, true, "sai e a tarefa continua com alguém")
+    assert.equal(checkAssign(executor, [2], [2]).ok, true, "nada mudou")
+    const outro = checkAssign(executor, [3], [3, 1])
+    assert.equal(!outro.ok && outro.message, "Só o gestor atribui tarefas para outras pessoas.")
+    assert.equal(checkAssign(executor, [2], []).ok, false, "não tira outra pessoa")
+  })
+
+  it("executor não deixa a tarefa sem responsável", () => {
+    const r = checkAssign(executor, [3], [])
+    assert.equal(!r.ok && r.message, "Só o gestor deixa uma tarefa sem responsável.")
+    assert.equal(checkAssign(executor, [], []).ok, false)
   })
 })
 
