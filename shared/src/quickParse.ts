@@ -4,7 +4,7 @@ import { TASK_PRIORITIES, type CategoryKey, type TaskPriority } from "./types"
  * Lê a linha da criação rápida e separa o título dos atalhos:
  *   #categoria   → nome da categoria sem espaços (#infra, #chamado…)
  *   !prioridade  → !urgente, !alta, !media, !baixa
- *   @pessoa      → @juliana (primeiro nome, sem acento)
+ *   @pessoa      → @juliana (primeiro nome, sem acento); vários @ = vários responsáveis
  *   prazo        → hoje, amanhã, depois de amanhã, segunda…domingo, 15/10, 15/10/2026
  * Atalhos não reconhecidos ficam no título.
  */
@@ -18,7 +18,8 @@ export interface QuickParseResult {
   title: string
   category?: CategoryKey
   priority?: TaskPriority
-  assigneeId?: number
+  /** Responsáveis pelos @, na ordem digitada; ausente se não houver nenhum @ reconhecido. */
+  assigneeIds?: number[]
   /** AAAA-MM-DD */
   dueDate?: string
   /** Trechos reconhecidos, para destacar na interface. */
@@ -151,10 +152,11 @@ export function parseQuickTask(input: string, options: QuickParseOptions): Quick
         continue
       }
     }
-    if (head === "@" && result.assigneeId === undefined) {
+    if (head === "@") {
       const id = matchPrefix(body, people)
       if (id !== undefined) {
-        result.assigneeId = id
+        // Repetir a mesma pessoa não duplica.
+        if (!result.assigneeIds?.includes(id)) result.assigneeIds = [...(result.assigneeIds ?? []), id]
         result.tokens.push(word)
         continue
       }

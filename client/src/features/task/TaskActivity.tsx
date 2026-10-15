@@ -51,6 +51,12 @@ function joinList(items: string[]) {
   return items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} e ${items.at(-1)}`
 }
 
+/** Id único (registros antigos), lista de ids (novos) ou nada → lista de ids. */
+function asIds(value: unknown): number[] {
+  if (Array.isArray(value)) return value.filter((v): v is number => typeof v === "number")
+  return typeof value === "number" ? [value] : []
+}
+
 function describe(
   event: TaskEventDTO,
   usersById: Map<number, UserDTO>,
@@ -58,13 +64,14 @@ function describe(
 ): React.ReactNode {
   const to = event.toStatus ? label(event.toStatus) : ""
   const from = event.fromStatus ? label(event.fromStatus) : ""
-  const name = (id: unknown) => (typeof id === "number" ? usersById.get(id)?.name.split(" ")[0] : undefined)
+  const names = (ids: number[]) => joinList(ids.map((id) => usersById.get(id)?.name.split(" ")[0] ?? "alguém"))
 
   switch (event.type) {
     case "created": {
-      const assignee = event.detail?.assigneeId
-      if (typeof assignee === "number" && assignee !== event.actorId) return <>criou a tarefa e atribuiu a {name(assignee)}</>
-      return "criou a tarefa"
+      // Registros antigos: { assigneeId }; novos: { assigneeIds }.
+      const ids = asIds(event.detail?.assigneeIds ?? event.detail?.assigneeId)
+      if (ids.length === 0 || (ids.length === 1 && ids[0] === event.actorId)) return "criou a tarefa"
+      return <>criou a tarefa e atribuiu a {names(ids)}</>
     }
     case "moved":
       return (
@@ -85,10 +92,16 @@ function describe(
     case "reopened":
       return <>reabriu em {to}</>
     case "assigned": {
-      const target = event.detail?.to
-      if (target === null) return "removeu o responsável"
-      if (target === event.actorId) return "assumiu a tarefa"
-      return <>atribuiu a {name(target)}</>
+      // Registros antigos guardam um id (ou null); novos, a lista inteira antes e depois.
+      const from = asIds(event.detail?.from)
+      const to = asIds(event.detail?.to)
+      const added = to.filter((id) => !from.includes(id))
+      const removed = from.filter((id) => !to.includes(id))
+      if (to.length === 0) return from.length > 1 ? "removeu todos os responsáveis" : "removeu o responsável"
+      if (removed.length === 0 && added.length === 1 && added[0] === event.actorId) return "entrou como responsável"
+      if (added.length === 0 && removed.length === 1 && removed[0] === event.actorId) return "saiu da tarefa"
+      const parts = [added.length ? `incluiu ${names(added)}` : "", removed.length ? `tirou ${names(removed)}` : ""]
+      return parts.filter(Boolean).join(" e ")
     }
     case "updated": {
       const fields = Array.isArray(event.detail?.fields) ? (event.detail.fields as string[]) : []

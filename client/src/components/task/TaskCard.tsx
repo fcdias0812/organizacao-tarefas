@@ -1,7 +1,7 @@
-import { Ban, ListChecks, MessageSquare, Undo2, UserRoundPlus } from "lucide-react"
+import { Ban, ListChecks, MessageSquare, Undo2 } from "lucide-react"
 import { cn } from "cn"
 
-import { CategoryLabel, DueChip, PriorityDot, UserAvatar } from "@/components/task/TaskMeta"
+import { AssigneeAvatars, CategoryLabel, DueChip, PriorityDot } from "@/components/task/TaskMeta"
 import type { TaskCardData } from "@/lib/domain"
 
 interface TaskCardProps extends React.ComponentProps<"div"> {
@@ -95,18 +95,7 @@ export function TaskCard({ task, lifted, rejected, now, actions, compact = false
           </span>
         )}
 
-        <span className="ml-auto">
-          {task.assignee ? (
-            <UserAvatar user={task.assignee} size="sm" />
-          ) : (
-            <span
-              className="grid size-6 place-items-center rounded-full border-[1.5px] border-dashed border-ink-4 text-ink-3"
-              title="Sem responsável"
-            >
-              <UserRoundPlus className="size-3" />
-            </span>
-          )}
-        </span>
+        <AssigneeAvatars users={task.assignees} max={compact ? 2 : 3} className="ml-auto" />
       </div>
 
       {actions && (

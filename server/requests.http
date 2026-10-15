@@ -24,7 +24,7 @@ GET {{api}}/tasks/11
 POST {{api}}/tasks
 Content-Type: application/json
 
-{ "title": "Trocar toner da impressora do RH", "category": "ticket", "priority": "high", "dueDate": "2026-10-20", "assigneeId": 3 }
+{ "title": "Trocar toner da impressora do RH", "category": "ticket", "priority": "high", "dueDate": "2026-10-20", "assigneeIds": [3, 2] }
 
 ### Tentar mandar para Revisão com checklist incompleto (deve dar 409 com a mensagem)
 POST {{api}}/tasks/1/move

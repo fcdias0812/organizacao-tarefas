@@ -4,6 +4,7 @@ import {
   ArchiveRestore,
   Ban,
   CalendarDays,
+  ChevronDown,
   Check,
   CircleCheck,
   Flag,
@@ -18,6 +19,7 @@ import {
 } from "lucide-react"
 import {
   checkArchive,
+  checkAssign,
   checkChecklistEditable,
   isChecklistComplete,
   type CategoryKey,
@@ -32,7 +34,7 @@ import { cn } from "cn"
 import { ReasonDialog, type ReasonKind } from "@/components/board/ReasonDialog"
 import { DueDatePicker } from "@/components/task/DueDatePicker"
 import { StatusIcon } from "@/components/task/StatusIcon"
-import { CategoryLabel, PriorityDot, UserAvatar } from "@/components/task/TaskMeta"
+import { AssigneeAvatars, CategoryLabel, PriorityDot, UserAvatar } from "@/components/task/TaskMeta"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -43,12 +45,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import { useMoveTask } from "@/features/board/useMoveTask"
 import { formatFullDateTime, formatRelative } from "@/lib/dates"
 import { useAppConfig } from "@/features/settings/appConfig"
-import { PRIORITY_ORDER } from "@/lib/domain"
+import { joinNames, PRIORITY_ORDER } from "@/lib/domain"
 import { TaskChecklist } from "./TaskChecklist"
 import { TaskActivity } from "./TaskActivity"
 import { useArchiveActions } from "./useArchive"
@@ -183,8 +193,8 @@ function DrawerBody({
         )}
 
         <dl className="grid grid-cols-[112px_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5 text-[13px]">
-          <Property icon={<UserRound />} label="Responsável">
-            <AssigneeSelect task={task} me={me} users={users} onChange={(assigneeId) => save({ assigneeId })} />
+          <Property icon={<UserRound />} label="Responsáveis">
+            <AssigneePicker task={task} me={me} users={users} onChange={(assigneeIds) => save({ assigneeIds })} />
           </Property>
           <Property icon={<Flag />} label="Prioridade">
             <Select value={task.priority} onValueChange={(v) => save({ priority: v as TaskPriority })}>
@@ -463,7 +473,11 @@ function Property({ icon, label, children }: { icon: React.ReactNode; label: str
   )
 }
 
-function AssigneeSelect({
+/**
+ * Responsáveis (um ou mais): cada clique inclui ou tira uma pessoa e já salva.
+ * O que a regra não permite (ex.: executor mexendo em outra pessoa) aparece desabilitado.
+ */
+function AssigneePicker({
   task,
   me,
   users,
@@ -472,40 +486,57 @@ function AssigneeSelect({
   task: TaskDetailDTO
   me: UserDTO
   users: UserDTO[]
-  onChange: (assigneeId: number | null) => void
+  onChange: (assigneeIds: number[]) => void
 }) {
-  const isManager = me.role === "manager"
-  // Executor só pode assumir a tarefa; o atual responsável aparece para leitura.
-  const options = isManager ? users : users.filter((u) => u.id === me.id || u.id === task.assigneeId)
+  const current = task.assigneeIds
+  const selected = current.map((id) => users.find((u) => u.id === id)).filter((u) => u !== undefined)
+  const toggle = (id: number) => (current.includes(id) ? current.filter((n) => n !== id) : [...current, id])
+  const canSet = (next: number[]) => checkAssign(me, current, next).ok
 
   return (
-    <Select
-      value={task.assigneeId ? String(task.assigneeId) : "none"}
-      onValueChange={(v) => onChange(v === "none" ? null : Number(v))}
-    >
-      <SelectTrigger size="sm" className={propertyTrigger} aria-label="Responsável">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent position="popper" align="start">
-        {options.map((u) => (
-          <SelectItem key={u.id} value={String(u.id)} disabled={!isManager && u.id !== me.id}>
-            <span className="inline-flex items-center gap-2 text-ink">
-              <UserAvatar user={u} size="sm" withTooltip={false} className="size-5 ring-0" />
-              {u.name}
-              {u.id === me.id && <span className="text-ink-3">(você)</span>}
-            </span>
-          </SelectItem>
-        ))}
-        {(isManager || task.assigneeId === null) && (
-          <SelectItem value="none" disabled={!isManager}>
-            <span className="inline-flex items-center gap-2 text-ink-3">
-              <span className="size-5 rounded-full border-[1.5px] border-dashed border-ink-4" />
-              Sem responsável
-            </span>
-          </SelectItem>
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label="Responsáveis"
+        className="flex h-8 w-full max-w-64 items-center gap-2 rounded-full pr-2 pl-2.5 text-left text-[13px] text-ink outline-none transition-colors hover:bg-surface-sunken focus-visible:ring-4 focus-visible:ring-brand-100 disabled:pointer-events-none disabled:opacity-60 aria-expanded:bg-surface-sunken"
+      >
+        {selected.length === 0 ? (
+          <span className="inline-flex items-center gap-2 text-ink-3">
+            <AssigneeAvatars users={[]} className="size-5" /> Sem responsável
+          </span>
+        ) : (
+          <>
+            <AssigneeAvatars users={selected} avatarClassName="size-5" />
+            <span className="truncate">{joinNames(selected.map((u) => (u.id === me.id ? "Você" : u.name.split(" ")[0])))}</span>
+          </>
         )}
-      </SelectContent>
-    </Select>
+        <ChevronDown className="ml-auto size-4 shrink-0 text-ink-3" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-64">
+        {users.map((u) => (
+          <DropdownMenuCheckboxItem
+            key={u.id}
+            checked={current.includes(u.id)}
+            disabled={!canSet(toggle(u.id))}
+            onCheckedChange={() => onChange(toggle(u.id))}
+            // Continua aberto para marcar várias pessoas seguidas.
+            onSelect={(e) => e.preventDefault()}
+          >
+            <UserAvatar user={u} size="sm" withTooltip={false} className="size-5 ring-0" />
+            {u.name}
+            {u.id === me.id && <span className="text-ink-3">(você)</span>}
+          </DropdownMenuCheckboxItem>
+        ))}
+        {current.length > 0 && canSet([]) && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => onChange([])} className="text-ink-2">
+              <span className="size-5 rounded-full border-[1.5px] border-dashed border-ink-4" />
+              Deixar sem responsável
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

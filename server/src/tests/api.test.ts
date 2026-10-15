@@ -101,7 +101,7 @@ describe("criação de tarefa", () => {
   it("copia o checklist padrão da categoria e registra quem criou", async () => {
     const task = await createTask(analista)
     assert.equal(task.status, "todo")
-    assert.equal(task.assigneeId, analista.userId, "sem responsável informado, fica com quem criou")
+    assert.deepEqual(task.assigneeIds, [analista.userId], "sem responsável informado, fica com quem criou")
     assert.deepEqual(
       task.checklist.map((i) => i.label),
       [
@@ -120,12 +120,56 @@ describe("criação de tarefa", () => {
     const res = await analista.request("POST", "/tasks", {
       title: "X",
       category: "infra",
-      assigneeId: ctx.users.gerente.id,
+      assigneeIds: [ctx.users.analista.id, ctx.users.gerente.id],
     })
     assert.equal(res.status, 403)
 
-    const task = await createTask(gerente, { assigneeId: ctx.users.analista.id })
-    assert.equal(task.assigneeId, ctx.users.analista.id)
+    const task = await createTask(gerente, { assigneeIds: [ctx.users.analista.id] })
+    assert.deepEqual(task.assigneeIds, [ctx.users.analista.id])
+  })
+
+  it("vários responsáveis: ordem mantida, sem repetição, e gestor pode deixar sem ninguém", async () => {
+    const { analista: a, coordenador: c } = ctx.users
+    const task = await createTask(gerente, { assigneeIds: [c.id, a.id, c.id] })
+    assert.deepEqual(task.assigneeIds, [c.id, a.id])
+
+    // Quem continua mantém o lugar; quem entra vai para o fim.
+    const edit = await gerente.request<{ task: TaskDetailDTO }>("PATCH", `/tasks/${task.id}`, {
+      assigneeIds: [a.id, gerente.userId],
+    })
+    assert.equal(edit.status, 200)
+    assert.deepEqual(edit.body.task.assigneeIds, [a.id, gerente.userId])
+    const assigned = edit.body.task.events.at(-1)!
+    assert.equal(assigned.type, "assigned")
+    assert.deepEqual(assigned.detail, { from: [c.id, a.id], to: [a.id, gerente.userId] })
+
+    const none = await gerente.request<{ task: TaskDetailDTO }>("PATCH", `/tasks/${task.id}`, { assigneeIds: [] })
+    assert.deepEqual(none.body.task.assigneeIds, [])
+    const board = (await gerente.request<{ tasks: { id: number; assigneeIds: number[] }[] }>("GET", "/tasks")).body.tasks
+    assert.deepEqual(board.find((t) => t.id === task.id)?.assigneeIds, [])
+  })
+
+  it("executor entra e sai de uma tarefa, sem mexer nos outros", async () => {
+    const task = await createTask(gerente, { assigneeIds: [ctx.users.coordenador.id] })
+    const join = await analista.request<{ task: TaskDetailDTO }>("PATCH", `/tasks/${task.id}`, {
+      assigneeIds: [ctx.users.coordenador.id, analista.userId],
+    })
+    assert.equal(join.status, 200)
+    assert.deepEqual(join.body.task.assigneeIds, [ctx.users.coordenador.id, analista.userId])
+
+    const kick = await analista.request("PATCH", `/tasks/${task.id}`, { assigneeIds: [analista.userId] })
+    assert.equal(kick.status, 403)
+
+    const leave = await analista.request<{ task: TaskDetailDTO }>("PATCH", `/tasks/${task.id}`, {
+      assigneeIds: [ctx.users.coordenador.id],
+    })
+    assert.deepEqual(leave.body.task.assigneeIds, [ctx.users.coordenador.id])
+  })
+
+  it("responsável inexistente é recusado", async () => {
+    const res = await gerente.request("POST", "/tasks", { title: "X", category: "ticket", assigneeIds: [999] })
+    assert.equal(res.status, 422)
+    assert.equal(res.body.error.message, "Responsável não encontrado.")
   })
 
   it("valida os campos com mensagens em português", async () => {

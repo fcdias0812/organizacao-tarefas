@@ -1,4 +1,4 @@
-import { CalendarDays } from "lucide-react"
+import { CalendarDays, UserRoundPlus } from "lucide-react"
 import { cn } from "cn"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -145,5 +145,52 @@ export function UserAvatar({
         {user.name} · {user.jobTitle ?? profileLabel(user)}
       </TooltipContent>
     </Tooltip>
+  )
+}
+
+/**
+ * Responsáveis de uma tarefa: fotos sobrepostas (até `max`) e "+N" para o resto.
+ * Sem ninguém, mostra o círculo tracejado de "sem responsável".
+ */
+export function AssigneeAvatars({
+  users,
+  max = 3,
+  className,
+  avatarClassName,
+}: {
+  users: User[]
+  max?: number
+  className?: string
+  /** Ex.: fotos menores dentro de um selo. */
+  avatarClassName?: string
+}) {
+  if (users.length === 0) {
+    return (
+      <span
+        className={cn("grid size-6 place-items-center rounded-full border-[1.5px] border-dashed border-ink-4 text-ink-3", className)}
+        title="Sem responsável"
+      >
+        <UserRoundPlus className="size-3" />
+      </span>
+    )
+  }
+  const shown = users.length > max ? users.slice(0, max - 1) : users
+  const hidden = users.slice(shown.length)
+  return (
+    <span className={cn("flex items-center -space-x-1.5", className)} aria-label={`Responsáveis: ${users.map((u) => u.name).join(", ")}`}>
+      {shown.map((u) => (
+        <UserAvatar key={u.id} user={u} size="sm" className={avatarClassName} />
+      ))}
+      {hidden.length > 0 && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="relative grid size-6 place-items-center rounded-full bg-surface-sunken text-[10px] font-semibold text-ink-2 ring-2 ring-surface tabular-nums">
+              +{hidden.length}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{hidden.map((u) => u.name).join(", ")}</TooltipContent>
+        </Tooltip>
+      )}
+    </span>
   )
 }
